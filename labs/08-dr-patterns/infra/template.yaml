@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 08 - Disaster recovery mechanics. Route 53 failover routing driven by
+  a health check, plus the backup primitives that set your recovery point:
+  S3 versioning and DynamoDB point-in-time recovery.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-08
+  ZoneName:
+    Type: String
+    Default: saa-lab-08.example
+    Description: >-
+      A hosted zone for a domain nobody owns. It will not resolve on the public
+      internet, but querying its own nameservers directly works - which is all
+      the lab needs.
+
+Resources:
+
+  # ------------------------------------------------------------- health checks
+  # Route 53 health checkers in many regions request this path. Two consecutive
+  # failures from enough checkers flips the record set to the secondary.
+  PrimaryHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      HealthCheckConfig:
+        Type: HTTP
+        FullyQualifiedDomainName: example.com
+        Port: 80
+        ResourcePath: /            # change this to a 404 path to force failover
+        RequestInterval: 30
+        FailureThreshold: 2
+      HealthCheckTags:
+        - { Key: Name, Value: !Sub '${LabName}-primary-hc' }
+
+  # ------------------------------------------------------------- failover DNS
+  Zone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref ZoneName
+      HostedZoneConfig:
+        Comment: !Sub '${LabName} failover demonstration'
+
+  # PRIMARY is served while its health check passes. Only a failover record set
+  # may carry a health check in this role - weighted and latency records use
+  # health checks differently.
+  PrimaryRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Zone
+      Name: !Sub 'www.${ZoneName}'
+      Type: A
+      TTL: 60                      # short, so failover is not masked by caching
+      SetIdentifier: primary-ap-southeast-2
+      Failover: PRIMARY
+      HealthCheckId: !Ref PrimaryHealthCheck
+      ResourceRecords: ['203.0.113.10']
+
+  # SECONDARY answers only when the primary is unhealthy. It carries no health
+  # check: there is nothing to fail over to beyond it.
+  SecondaryRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref Zone
+      Name: !Sub 'www.${ZoneName}'
+      Type: A
+      TTL: 60
+      SetIdentifier: secondary-us-west-2
+      Failover: SECONDARY
+      ResourceRecords: ['198.51.100.20']
+
+  # ---------------------------------------------------- recovery point objective
+  # Versioning turns an overwrite or a delete into a recoverable event. Without
+  # it, an overwritten object is simply gone - no backup, no undo.
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${LabName}-data-${AWS::AccountId}'
+      VersioningConfiguration: { Status: Enabled }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-noncurrent
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 1
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-data' }]
+
+  # PITR gives continuous backups for 35 days, restoring to any second. It is a
+  # single boolean, and it is the difference between an RPO of seconds and an
+  # RPO of "whenever the last snapshot ran".
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub '${LabName}-orders'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-orders' }]
+
+Outputs:
+  HostedZoneId:  { Value: !Ref Zone }
+  HealthCheckId: { Value: !Ref PrimaryHealthCheck }
+  Nameservers:
+    Description: Query these directly - the zone is not delegated publicly
+    Value: !Join [' ', !GetAtt Zone.NameServers]
+  DigCommand:
+    Description: Returns 203.0.113.10 while healthy, 198.51.100.20 after failover
+    Value: !Sub ['dig +short @${NS} www.${ZoneName} A', { NS: !Select [0, !GetAtt Zone.NameServers] }]
+  HealthCheckStatus:
+    Value: !Sub 'aws route53 get-health-check-status --health-check-id ${PrimaryHealthCheck} --query "HealthCheckObservations[].StatusReport.Status" --output table'
+  BreakHealthCheck:
+    Description: Point the check at a path that 404s; failover follows in ~60-90s
+    Value: !Sub 'aws route53 update-health-check --health-check-id ${PrimaryHealthCheck} --resource-path /this-path-does-not-exist'
+  RestoreHealthCheck:
+    Value: !Sub 'aws route53 update-health-check --health-check-id ${PrimaryHealthCheck} --resource-path /'
+  DataBucket:  { Value: !Ref DataBucket }
+  OrdersTable: { Value: !Ref OrdersTable }
+  EstimatedCost:
+    Value: 'Hosted zone $0.50/mo + health check $0.50/mo, prorated to about $0.0014/hr'

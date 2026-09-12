@@ -1,0 +1,4 @@
+[
+  { "ParameterKey": "AlertEmail",       "ParameterValue": "you@example.com" },
+  { "ParameterKey": "MonthlyBudgetUsd", "ParameterValue": "5" }
+]

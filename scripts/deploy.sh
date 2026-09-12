@@ -31,10 +31,19 @@ fi
 CS_TYPE=UPDATE; [[ "$STATUS" == "DOES_NOT_EXIST" ]] && CS_TYPE=CREATE
 CS="deploy-$(date -u +%Y%m%d-%H%M%S)"
 
+# Labs needing values that must not be committed (an alert email, say) keep them
+# in infra/params.json, which is gitignored. See the lab's README.
+PARAMS=()
+if [[ -f "$LAB/infra/params.json" ]]; then
+  PARAMS=(--parameters "file://$LAB/infra/params.json")
+  info "using parameters from $LAB/infra/params.json"
+fi
+
 hdr "Change set ($CS_TYPE) for $STACK"
 aws cloudformation create-change-set \
   --stack-name "$STACK" --change-set-name "$CS" --change-set-type "$CS_TYPE" \
   --template-body "file://$TEMPLATE" \
+  "${PARAMS[@]}" \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --tags "Key=Project,Value=$TAG_PROJECT" \
          "Key=Lab,Value=$(basename "$LAB")" \

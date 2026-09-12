@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 05 - Decoupling with SNS fan-out to SQS, a Lambda consumer, and a
+  dead-letter queue that catches poison messages after a bounded number of
+  retries. No EC2, no VPC, no hourly charge.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-05
+
+Resources:
+
+  # ------------------------------------------------------------------- fan-out
+  # One publish, many independent subscribers. Adding a fifth consumer later
+  # means adding a subscription - the publisher is never modified.
+  Topic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${LabName}-orders'
+      DisplayName: Orders
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-orders' }]
+
+  # ------------------------------------------------------------------- queues
+  # The DLQ must exist before the queue that redrives into it.
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${LabName}-orders-dlq'
+      MessageRetentionPeriod: 1209600   # 14 days - the maximum, so evidence survives
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-orders-dlq' }]
+
+  OrdersQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${LabName}-orders'
+      # Must be >= the consuming function's timeout, or a second consumer can
+      # pick up a message the first one is still working on.
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 345600    # 4 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        # After 3 failed receives the message goes to the DLQ instead of
+        # retrying forever and blocking the queue behind it.
+        maxReceiveCount: 3
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-orders' }]
+
+  # A second, entirely independent subscriber. It receives every message the
+  # first one does and knows nothing about it.
+  AuditQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${LabName}-audit'
+      MessageRetentionPeriod: 345600
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-audit' }]
+
+  # SQS is not "in" a VPC, so access is granted by resource policy, not routing.
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref OrdersQueue, !Ref AuditQueue]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: sns.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: [!GetAtt OrdersQueue.Arn, !GetAtt AuditQueue.Arn]
+            Condition:
+              ArnEquals: { 'aws:SourceArn': !Ref Topic }
+
+  OrdersSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref Topic
+      Protocol: sqs
+      Endpoint: !GetAtt OrdersQueue.Arn
+      # Without this, the consumer receives SNS envelope JSON wrapping the
+      # payload instead of the payload itself.
+      RawMessageDelivery: true
+
+  AuditSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref Topic
+      Protocol: sqs
+      Endpoint: !GetAtt AuditQueue.Arn
+      RawMessageDelivery: true
+      # Only messages whose attributes match are delivered here. Filtering
+      # happens at SNS, so the audit consumer is never invoked for the rest.
+      FilterPolicy:
+        priority: [high]
+
+  # ----------------------------------------------------------------- consumer
+  ConsumerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: consume-orders
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # DeleteMessage is what actually removes a message. Lambda does it
+              # automatically only when the handler returns without raising.
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt OrdersQueue.Arn
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-consumer-role' }]
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LabName}-consumer'
+      RetentionInDays: 1
+
+  Consumer:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: !Sub '${LabName}-consumer'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt ConsumerRole.Arn
+      Timeout: 30          # must stay below the queue's 60s visibility timeout
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+
+          def handler(event, context):
+              """Processes orders. Any message containing 'poison' raises, which
+              returns the message to the queue; after maxReceiveCount receives
+              SQS moves it to the dead-letter queue."""
+              for record in event["Records"]:
+                  body = record["body"]
+                  received = record["attributes"]["ApproximateReceiveCount"]
+                  print(f"receive #{received}: {body}")
+
+                  if "poison" in body.lower():
+                      # Raising is how a Lambda SQS consumer signals failure.
+                      # Returning normally would delete the message silently.
+                      raise ValueError(f"cannot process (attempt {received}): {body}")
+
+                  print(f"processed OK: {body}")
+              return {"processed": len(event["Records"])}
+
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-consumer' }]
+
+  # The queue pulls, the function does not poll. Lambda's managed poller reads
+  # the queue and invokes the function with a batch.
+  EventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt OrdersQueue.Arn
+      FunctionName: !GetAtt Consumer.Arn
+      BatchSize: 1          # one message per invocation, so retries are legible
+      Enabled: true
+
+Outputs:
+  TopicArn:      { Value: !Ref Topic }
+  OrdersQueueUrl: { Value: !Ref OrdersQueue }
+  AuditQueueUrl: { Value: !Ref AuditQueue }
+  DlqUrl:        { Value: !Ref DeadLetterQueue }
+  PublishNormal:
+    Description: Fans out to both queues; the consumer processes it
+    Value: !Sub 'aws sns publish --topic-arn ${Topic} --message "order-1234" --message-attributes ''{"priority":{"DataType":"String","StringValue":"high"}}'' --region ${AWS::Region}'
+  PublishLowPriority:
+    Description: Filter policy means this one never reaches the audit queue
+    Value: !Sub 'aws sns publish --topic-arn ${Topic} --message "order-5678" --message-attributes ''{"priority":{"DataType":"String","StringValue":"low"}}'' --region ${AWS::Region}'
+  PublishPoison:
+    Description: Fails three times, then lands in the dead-letter queue
+    Value: !Sub 'aws sns publish --topic-arn ${Topic} --message "poison-message" --region ${AWS::Region}'
+  IdleCost:
+    Value: 'USD 0.00 per hour - SNS, SQS and Lambda all bill per request'

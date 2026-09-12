@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 06 - Static site on S3 behind CloudFront with Origin Access Control.
+  The bucket blocks all public access; only the distribution can read it, and it
+  proves that by signing every origin request with SigV4.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-06
+
+Resources:
+
+  # ------------------------------------------------------------------- origin
+  # Every public-access setting is blocked. The site is still reachable, because
+  # CloudFront is not "the public" - it is a named principal in the bucket policy.
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${LabName}-site-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration:
+        Rules:
+          # Storage class transitions are the cost lever this lab demonstrates.
+          # Noncurrent versions are pure overhead after a short grace period.
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 1
+          - Id: tier-then-expire
+            Status: Enabled
+            Prefix: archive/
+            Transitions:
+              - { StorageClass: STANDARD_IA, TransitionInDays: 30 }
+              - { StorageClass: GLACIER_IR,  TransitionInDays: 90 }
+            ExpirationInDays: 365
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-site' }]
+
+  # OAC replaces the older Origin Access Identity. It signs origin requests with
+  # SigV4, works with KMS-encrypted objects, and supports all S3 regions.
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${LabName}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # The only statement on the bucket. It names the CloudFront service principal
+  # and narrows it to this one distribution, so no other distribution in any
+  # account can read the bucket.
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub '${SiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+  # --------------------------------------------------------------------- edge
+  # Caching policy IDs are AWS-managed and identical in every account.
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${LabName} static site'
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_All
+        HttpVersion: http2and3
+        Origins:
+          - Id: s3-origin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            # Required, and must be empty: OAC replaces the old OAI mechanism.
+            S3OriginConfig: { OriginAccessIdentity: '' }
+        DefaultCacheBehavior:
+          TargetOriginId: s3-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6   # CachingOptimized
+        CacheBehaviors:
+          # A second behaviour on a path pattern - the mechanism behind routing
+          # /api/* to a different origin in a real architecture.
+          - PathPattern: /nocache/*
+            TargetOriginId: s3-origin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # CachingDisabled
+        CustomErrorResponses:
+          # Single-page-app behaviour, and the reason a 403 from S3 surfaces as
+          # a 404 to the viewer: S3 returns 403 for a missing key when the
+          # caller has no ListBucket permission.
+          - { ErrorCode: 403, ResponseCode: 404, ResponsePagePath: /error.html, ErrorCachingMinTTL: 10 }
+          - { ErrorCode: 404, ResponseCode: 404, ResponsePagePath: /error.html, ErrorCachingMinTTL: 10 }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-cdn' }]
+
+Outputs:
+  SiteUrl:
+    Description: Serve over HTTPS with a CloudFront certificate, no ACM setup needed
+    Value: !Sub 'https://${Distribution.DomainName}'
+  BucketName:     { Value: !Ref SiteBucket }
+  DistributionId: { Value: !Ref Distribution }
+  UploadCommand:
+    Description: Run after deploy - the bucket starts empty
+    Value: !Sub 'aws s3 cp index.html s3://${SiteBucket}/index.html && aws s3 cp error.html s3://${SiteBucket}/error.html'
+  DirectS3Url:
+    Description: Should return AccessDenied - proves the bucket is not public
+    Value: !Sub 'https://${SiteBucket.RegionalDomainName}/index.html'
+  InvalidateCommand:
+    Value: !Sub 'aws cloudfront create-invalidation --distribution-id ${Distribution} --paths "/*"'

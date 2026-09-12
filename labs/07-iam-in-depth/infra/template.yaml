@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 07 - IAM evaluation logic made visible. A permission boundary that
+  shrinks an over-broad policy, an explicit deny that beats an allow, and a
+  resource policy that grants access the identity policy never mentions. No
+  compute, no network, no cost.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-07
+
+Resources:
+
+  # -------------------------------------------------------------- the boundary
+  # A boundary grants nothing. It sets the ceiling: effective permissions are
+  # the INTERSECTION of the identity policy and the boundary.
+  Boundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${LabName}-boundary'
+      Description: Maximum permissions any role carrying this boundary may have
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadOnlyS3AndNothingElse
+            Effect: Allow
+            Action:
+              - s3:Get*
+              - s3:List*
+            Resource: '*'
+
+  # -------------------------------------------------------------- the identity
+  # This policy looks alarming on its own: full S3 and full EC2.
+  OverBroadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${LabName}-overbroad'
+      Description: Deliberately too permissive, to show the boundary clamp it
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ['s3:*', 'ec2:*']
+            Resource: '*'
+
+  # Attaching the boundary means the effective permissions are s3:Get* and
+  # s3:List* only. Every ec2 action and every s3 write is denied by the ceiling,
+  # even though the identity policy allows them.
+  BoundedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${LabName}-bounded'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root' }
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [!Ref OverBroadPolicy]
+      PermissionsBoundary: !Ref Boundary
+      Tags:
+        - { Key: Name, Value: !Sub '${LabName}-bounded' }
+        - { Key: team, Value: research }
+
+  # The same over-broad policy with NO boundary, as the control case. Compare
+  # the two in the policy simulator and the difference is the whole lesson.
+  UnboundedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${LabName}-unbounded'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root' }
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [!Ref OverBroadPolicy]
+      Tags:
+        - { Key: Name, Value: !Sub '${LabName}-unbounded' }
+        - { Key: team, Value: platform }
+
+  # ------------------------------------------------------- attribute-based access
+  # One policy that works for any number of teams: access is granted where the
+  # principal's tag matches the resource's tag. This is ABAC, and it is how you
+  # avoid writing a policy per team.
+  AbacRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${LabName}-abac'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root' }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: same-team-only
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['ec2:StartInstances', 'ec2:StopInstances']
+                Resource: 'arn:aws:ec2:*:*:instance/*'
+                Condition:
+                  StringEquals:
+                    'aws:ResourceTag/team': '${aws:PrincipalTag/team}'
+      Tags:
+        - { Key: Name, Value: !Sub '${LabName}-abac' }
+        - { Key: team, Value: research }
+
+  # ----------------------------------------------------------- resource policy
+  Vault:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${LabName}-vault-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-vault' }]
+
+  VaultPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Vault
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # An explicit Deny. Nothing overrides it - not an Allow in the identity
+          # policy, not an admin policy, not the account root. This is the top of
+          # IAM's evaluation order and the reason "deny wins" is the first rule.
+          - Sid: ExplicitDenyBeatsEverything
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt Vault.Arn, !Sub '${Vault.Arn}/*']
+            Condition:
+              ArnEquals:
+                'aws:PrincipalArn': !GetAtt UnboundedRole.Arn
+
+          # A resource policy can grant access the identity policy never mentions.
+          # This is why cross-account access works without editing the caller's
+          # own permissions - and why S3 access can surprise you in both directions.
+          - Sid: ResourcePolicyGrantsOnItsOwn
+            Effect: Allow
+            Principal: { AWS: !GetAtt AbacRole.Arn }
+            Action: ['s3:GetObject', 's3:ListBucket']
+            Resource: [!GetAtt Vault.Arn, !Sub '${Vault.Arn}/*']
+
+Outputs:
+  BoundedRoleArn:   { Value: !GetAtt BoundedRole.Arn }
+  UnboundedRoleArn: { Value: !GetAtt UnboundedRole.Arn }
+  AbacRoleArn:      { Value: !GetAtt AbacRole.Arn }
+  VaultBucket:      { Value: !Ref Vault }
+
+  SimulateBoundedEc2:
+    Description: Expect implicitDeny - the boundary has no ec2 actions
+    Value: !Sub 'aws iam simulate-principal-policy --policy-source-arn ${BoundedRole.Arn} --action-names ec2:StartInstances --query "EvaluationResults[].{action:EvalActionName,decision:EvalDecision}" --output table'
+  SimulateUnboundedEc2:
+    Description: Expect allowed - same identity policy, no boundary
+    Value: !Sub 'aws iam simulate-principal-policy --policy-source-arn ${UnboundedRole.Arn} --action-names ec2:StartInstances --query "EvaluationResults[].{action:EvalActionName,decision:EvalDecision}" --output table'
+  SimulateBoundedS3Write:
+    Description: Expect implicitDeny - s3:PutObject is outside the boundary
+    Value: !Sub 'aws iam simulate-principal-policy --policy-source-arn ${BoundedRole.Arn} --action-names s3:PutObject s3:GetObject --query "EvaluationResults[].{action:EvalActionName,decision:EvalDecision}" --output table'
+  SimulateExplicitDeny:
+    Description: Expect explicitDeny - the bucket policy denies this role by name
+    Value: !Sub 'aws iam simulate-principal-policy --policy-source-arn ${UnboundedRole.Arn} --action-names s3:GetObject --resource-arns ${Vault.Arn}/test.txt --query "EvaluationResults[].{action:EvalActionName,decision:EvalDecision}" --output table'
+  IdleCost:
+    Value: 'USD 0.00 - IAM roles, policies and the simulator are free'

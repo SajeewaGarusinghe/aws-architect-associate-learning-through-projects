@@ -5,3 +5,6 @@
 .auto-teardown.cancel
 .auto-teardown.deadline
 .auto-teardown.log
+
+# Lab parameters may hold values that must not be public (alert emails, etc.)
+**/infra/params.json

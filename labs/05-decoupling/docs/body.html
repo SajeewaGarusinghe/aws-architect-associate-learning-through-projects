@@ -1,0 +1,266 @@
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 05 — Decoupling With Queues</h1>
+    <div class="sub">One publish reaching many independent subscribers, a consumer that can fail without losing work, and a dead-letter queue that stops one bad message blocking everything behind it.</div>
+    <div class="meta">
+      <div><b>1</b>publisher</div>
+      <div><b>2</b>subscribers</div>
+      <div><b>3</b>retries, then DLQ</div>
+      <div><b>$0.00</b>per hour idle</div>
+    </div>
+  </div>
+
+  <p>Every previous lab connected components synchronously: a request arrives, something answers it,
+  and if the thing on the other end is down the caller finds out immediately. This lab removes that
+  coupling. The publisher does not know who is listening, does not wait for them, and is unaffected
+  when one of them breaks.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: SNS fan-out, SQS as a buffer, message filtering at the topic, visibility timeout,
+    dead-letter queues and redrive, and what "at least once delivery" obliges you to build. Out of
+    scope: FIFO queues, EventBridge, and Step Functions — all worth knowing, none needed to see the
+    pattern work.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Publish once, consume independently</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>A queue between two components converts a failure into a delay: the producer keeps working
+      at its own pace, the consumer retries on its own schedule, and the only thing that changes
+      when the consumer dies is how long messages sit waiting.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Deliver every order to several consumers</li>
+          <li>Survive a consumer being offline</li>
+          <li>Retry transient failures automatically</li>
+          <li>Quarantine messages that can never succeed</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>The publisher never learns who subscribes</li>
+          <li>A failing consumer must not block the queue</li>
+          <li>Failures bounded to three attempts</li>
+          <li>Evidence of failures kept for 14 days</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>No EC2 and no VPC</li>
+          <li>Idle cost exactly zero</li>
+          <li>Consumer timeout below the visibility timeout</li>
+          <li>Destroyed by a single <code>delete-stack</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>SNS topic</div>
+        <div class="role">A push-based fan-out point. <b>Why:</b> one publish reaches every subscriber. Adding a fifth consumer later means adding a subscription — the publisher is never modified, which is the whole point of decoupling.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Orders queue</div>
+        <div class="role">SQS standard, 60-second visibility timeout, four-day retention. <b>Why:</b> the queue is the buffer. If the consumer is down, messages accumulate rather than being lost, and processing resumes where it stopped.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>Audit queue</div>
+        <div class="role">A second subscriber with a filter policy matching <code>priority = high</code>. <b>Why:</b> filtering happens at SNS, so this consumer is never invoked for messages it does not care about — cheaper and simpler than filtering in code.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Dead-letter queue</div>
+        <div class="role">Receives anything the orders queue fails to process three times, retained 14 days. <b>Why:</b> without it, a message that can never succeed retries until it expires, consuming invocations and hiding the failure. The DLQ turns it into a visible, inspectable item.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>Consumer function</div>
+        <div class="role">Lambda with a 30-second timeout, invoked with a batch of one. <b>Why:</b> raising an exception is how a Lambda SQS consumer signals failure — returning normally deletes the message. The timeout must stay below the visibility timeout, or a second invocation can pick up work still in progress.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Event source mapping</div>
+        <div class="role">Lambda's managed poller reads the queue and invokes the function. <b>Why:</b> the function never polls. This is also what deletes messages automatically on success, which is why forgetting to raise on failure silently loses data.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>Queue policy</div>
+        <div class="role">Allows <code>sqs:SendMessage</code> from the SNS service principal, conditioned on this topic's ARN. <b>Why:</b> SQS is not in a VPC — access is a resource policy question, not a routing one.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 420" role="img" aria-label="An SNS topic fanning out to two SQS queues, one consumed by a Lambda function that redrives failures into a dead-letter queue after three attempts.">
+        <rect class="d-bg" x="0" y="0" width="760" height="420"/>
+
+        <rect class="region" x="8" y="16" width="744" height="388" rx="8"/>
+        <text class="zone-lbl" x="20" y="36" fill="#545B64">REGION · ap-southeast-2 · NO VPC</text>
+
+        <rect class="tile-w" x="28" y="150" width="120" height="50" rx="5"/>
+        <text class="t-lbli" x="88" y="172">Publisher</text>
+        <text class="flow" x="88" y="187" text-anchor="middle">knows nobody</text>
+
+        <rect class="tile-o" x="196" y="150" width="130" height="50" rx="4"/>
+        <text class="t-lbli" x="261" y="172">SNS topic</text>
+        <text class="t-subd" x="261" y="187">fan-out</text>
+
+        <rect class="tile-b" x="392" y="80" width="140" height="48" rx="4"/>
+        <text class="t-lbl" x="462" y="100">Orders queue</text>
+        <text class="t-sub" x="462" y="115">visibility 60s</text>
+
+        <rect class="tile-p" x="392" y="238" width="140" height="48" rx="4"/>
+        <text class="t-lbl" x="462" y="258">Audit queue</text>
+        <text class="t-sub" x="462" y="273">filtered</text>
+
+        <rect class="tile" x="580" y="80" width="146" height="48" rx="4"/>
+        <text class="t-lbl" x="653" y="100">Consumer</text>
+        <text class="t-sub" x="653" y="115">Lambda · batch 1</text>
+
+        <rect class="tile-g" x="392" y="330" width="334" height="46" rx="4"/>
+        <text class="t-lbl" x="559" y="350">Dead-letter queue</text>
+        <text class="t-sub" x="559" y="365">after 3 failed receives · retained 14 days</text>
+
+        <path class="ln-o" d="M148,175 H192" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M326,168 H358 V104 H388" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M326,182 H358 V262 H388" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="336" y="118">all messages</text>
+        <text class="flow" x="336" y="230">priority = high only</text>
+
+        <path class="ln" d="M532,104 H576" marker-end="url(#arrow)"/>
+        <text class="flow" x="536" y="70">poller invokes</text>
+
+        <path class="ln-async" d="M653,128 V150 H462 V326" marker-end="url(#arrow-a)"/>
+        <text class="flow" x="470" y="200">on the 3rd failure,</text>
+        <text class="flow" x="470" y="212">SQS redrives here</text>
+
+        <text class="flow" x="28" y="240">The publisher completes</text>
+        <text class="flow" x="28" y="252">as soon as SNS accepts</text>
+        <text class="flow" x="28" y="264">the message. It never</text>
+        <text class="flow" x="28" y="276">waits for a consumer,</text>
+        <text class="flow" x="28" y="288">and never learns if one</text>
+        <text class="flow" x="28" y="300">failed.</text>
+
+        <text class="flow" x="28" y="392">Idle cost: $0.00/hour. SNS, SQS and Lambda all bill per request.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — The orange path is delivery, which always succeeds from the publisher's point of view. The purple path is what happens when processing does not: after three receives the message leaves the main queue entirely, so the fourth message is never stuck behind the first.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = role</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Fan-out point</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Buffer</div>
+        <div class="it"><span class="chip" style="background:#8B5CF6"></span>Filtered subscriber</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Consumer</div>
+        <div class="it"><span class="chip" style="background:#545B64"></span>Quarantine</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style = path</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Normal delivery</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Poll and invoke</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Redrive on failure</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">A publisher calls <code>sns:Publish</code> once, with a <code>priority</code> message attribute. The call returns as soon as SNS has durably accepted it — <b>the publisher never waits for any consumer</b>.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">SNS delivers to both subscribed queues, checking each subscription's filter policy first. A <code>priority = low</code> message reaches the orders queue but is <b>never delivered to the audit queue at all</b>.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd">Raw message delivery is on, so each queue receives the payload itself rather than SNS envelope JSON wrapped around it.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">Lambda's managed poller reads one message and invokes the consumer. The message becomes <b>invisible to other consumers for 60 seconds</b> — it is not deleted, only hidden.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd"><b>On success</b> the handler returns and the poller deletes the message. <b>On failure</b> the handler raises, nothing is deleted, and the message becomes visible again when the visibility timeout expires.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">Each receive increments <code>ApproximateReceiveCount</code>. When it exceeds <code>maxReceiveCount</code> of 3, SQS moves the message to the dead-letter queue instead of making it visible again.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">The message now sits in the DLQ for up to 14 days, inspectable, with no further processing attempts and nothing blocked behind it.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">How should several consumers receive the same event?</div>
+      <div class="row"><div class="opt no">One queue that every consumer reads</div><div class="rea">Standard SQS delivers each message to <em>one</em> consumer. Two consumers reading one queue split the work, they do not each get a copy — a genuinely common misunderstanding.</div></div>
+      <div class="row"><div class="opt no">The publisher writes to each queue directly</div><div class="rea">Works, but now the publisher knows every consumer. Adding one means changing and redeploying the publisher, which is precisely the coupling this pattern exists to remove.</div></div>
+      <div class="row"><div class="opt yes">SNS fan-out to one queue per consumer</div><div class="rea">Chosen. Each consumer owns a queue and therefore its own buffer, retries and dead-letter behaviour, and the publisher stays unaware of all of them.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">What should happen to a message that can never succeed?</div>
+      <div class="row"><div class="opt no">Retry until it expires</div><div class="rea">Four days of retries at the queue's default, burning invocations, filling logs, and — with a small batch — delaying every message behind it.</div></div>
+      <div class="row"><div class="opt no">Catch the error and return normally</div><div class="rea">The message is deleted and the failure vanishes. The queue looks healthy and the data is simply gone, which is worse than an alarm.</div></div>
+      <div class="row"><div class="opt yes">Redrive to a DLQ after 3 attempts</div><div class="rea">Chosen. Transient failures still get retried; permanent ones are quarantined quickly and visibly. A CloudWatch alarm on the DLQ's depth is the standard companion.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">At least once means design for duplicates</span>
+      A standard SQS queue guarantees delivery <strong>at least once</strong>, not exactly once —
+      and a visibility timeout that expires while a consumer is still working will hand the same
+      message to a second one. Consumers must therefore be <strong>idempotent</strong>: processing
+      the same message twice must produce the same result as processing it once. FIFO queues offer
+      exactly-once processing within a deduplication window, at the cost of much lower throughput
+      and strict ordering you often do not need.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">The queue policy admits only the SNS service principal, conditioned on this specific topic ARN, so no other topic or account can enqueue. The consumer's role grants three actions on one queue. Messages are encrypted at rest by default.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">Standard SQS has effectively unlimited throughput. Lambda scales its pollers with queue depth automatically. The usual bottleneck is downstream — a function scaling to hundreds of concurrent executions against a database that cannot take it, which is what reserved concurrency exists to cap.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">A consumer outage becomes a growing queue rather than lost data — the defining property of this pattern. The real risks are a poison message with no DLQ, a visibility timeout shorter than processing time causing duplicate work, and a consumer that swallows exceptions and deletes messages it never processed.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">All three services bill per request and nothing at rest. Long polling (<code>ReceiveMessageWaitTimeSeconds</code> up to 20) cuts empty-receive charges substantially. Filtering at SNS avoids paying for invocations that would discard the message anyway.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~12 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Under two minutes.</b> Nothing is provisioned; the stack is queues, a topic, a function and IAM.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Publish a high-priority message and watch it arrive in both queues. Publish a low-priority one and watch the audit queue stay empty — the filter policy is doing that, not the consumer.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Publish a message containing <code>poison</code>. The logs show <b>receive #1, #2, #3</b> about a minute apart, and then it appears in the dead-letter queue. Nothing behind it was blocked.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">Under a minute. Like Lab 04, this stack costs nothing at rest — it is destroyed for consistency, not economy.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li><code>ApproximateReceiveCount</code> in the logs, climbing 1 → 2 → 3. That counter, not any timer, is what triggers the redrive.</li>
+            <li>The gap between retries — it is the visibility timeout, not a backoff setting.</li>
+            <li>The audit queue staying empty for low-priority messages. Filtering at the topic means that consumer was never invoked at all.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never set a Lambda consumer's timeout higher than the queue's visibility timeout. The
+          message becomes visible again <b>while the first invocation is still running</b>, a second
+          invocation picks it up, and the work happens twice — with no error anywhere to show it.
+          The rule is: <b>visibility timeout ≥ function timeout</b>, conventionally six times it.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">Idle $ / hour</th><th style="text-align:right">Per 10,000 messages</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>SNS</td><td class="n">0.0000</td><td class="n">0.0050</td><td>$0.50 per million publishes</td></tr>
+        <tr><td>SQS (2 queues + DLQ)</td><td class="n">0.0000</td><td class="n">0.0120</td><td>$0.40 per million requests</td></tr>
+        <tr><td>Lambda</td><td class="n">0.0000</td><td class="n">0.0021</td><td>Requests plus GB-seconds</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.0000</td><td class="n">0.0191</td><td>Under two cents per 10,000</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> No FIFO queue: exactly-once processing and strict
+    ordering cost throughput, and most workloads need neither. No EventBridge, which routes on
+    content across many targets and is the better answer once routing rules grow beyond a filter
+    policy. No Step Functions, which coordinate multi-step workflows where a queue only moves one
+    message.</p>
+
+    <div class="callout warn">
+      <span class="ct">The distinction the exam keeps testing</span>
+      <strong>SNS pushes; SQS is pulled.</strong> SNS delivers to every subscriber immediately and
+      keeps nothing if delivery fails without a DLQ. SQS holds messages until a consumer asks for
+      them, which is what provides the buffer. "Fan out to several consumers" is SNS. "Absorb a
+      spike" or "survive a consumer outage" is SQS. "Both" is this architecture.
+    </div>
+  </div>

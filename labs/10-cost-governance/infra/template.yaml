@@ -1,0 +1,216 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 10 - Governance and cost control. CloudTrail recording the API calls
+  every other lab made, AWS Config evaluating resources against rules, and a
+  budget that actually emails when spend crosses a threshold.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-10
+  AlertEmail:
+    Type: String
+    Description: Where budget alerts are sent. You must confirm the subscription.
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    ConstraintDescription: must be a valid email address
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 5
+    MinValue: 1
+
+Resources:
+
+  # ------------------------------------------------------------------ the log
+  # One S3 bucket serves both CloudTrail and Config. Each writes under its own
+  # prefix, and each needs its own bucket policy statements.
+  AuditBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${LabName}-audit-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-lab-logs
+            Status: Enabled
+            ExpirationInDays: 1
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-audit' }]
+
+  AuditBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuditBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudTrailCheckAcl
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt AuditBucket.Arn
+          - Sid: CloudTrailWrite
+            Effect: Allow
+            Principal: { Service: cloudtrail.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub '${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals: { 's3:x-amz-acl': bucket-owner-full-control }
+          - Sid: ConfigCheckAcl
+            Effect: Allow
+            Principal: { Service: config.amazonaws.com }
+            Action: [s3:GetBucketAcl, s3:ListBucket]
+            Resource: !GetAtt AuditBucket.Arn
+          - Sid: ConfigWrite
+            Effect: Allow
+            Principal: { Service: config.amazonaws.com }
+            Action: s3:PutObject
+            Resource: !Sub '${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/Config/*'
+            Condition:
+              StringEquals: { 's3:x-amz-acl': bucket-owner-full-control }
+
+  # CloudTrail answers "who did this, when, from where". The first copy of
+  # management events in an account is free; data events are charged per event
+  # and are the usual cause of an unexpected CloudTrail bill.
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: AuditBucketPolicy
+    Properties:
+      TrailName: !Sub '${LabName}-trail'
+      S3BucketName: !Ref AuditBucket
+      IsLogging: true
+      IsMultiRegionTrail: true       # a single-region trail misses calls elsewhere
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true  # digest files prove the log was not altered
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-trail' }]
+
+  # --------------------------------------------------------------- the auditor
+  # Config answers a different question from CloudTrail: not "who changed it"
+  # but "what does it look like now, and is that allowed".
+  ConfigRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${LabName}-config-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: config.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWS_ConfigRole
+      Policies:
+        - PolicyName: write-to-audit-bucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/Config/*'
+                Condition:
+                  StringEquals: { 's3:x-amz-acl': bucket-owner-full-control }
+              - Effect: Allow
+                Action: s3:GetBucketAcl
+                Resource: !GetAtt AuditBucket.Arn
+
+  # Scoped to four resource types rather than everything in the account.
+  # Config bills per configuration item recorded, so recording all resource
+  # types in a busy account is a real and frequently unexpected cost.
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: !Sub '${LabName}-recorder'
+      RoleARN: !GetAtt ConfigRole.Arn
+      RecordingGroup:
+        AllSupported: false
+        IncludeGlobalResourceTypes: false
+        ResourceTypes:
+          - AWS::S3::Bucket
+          - AWS::EC2::SecurityGroup
+          - AWS::EC2::Instance
+          - AWS::DynamoDB::Table
+
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    DependsOn: AuditBucketPolicy
+    Properties:
+      Name: !Sub '${LabName}-delivery'
+      S3BucketName: !Ref AuditBucket
+      S3KeyPrefix: !Sub 'AWSLogs/${AWS::AccountId}/Config'
+
+  # Managed rules - AWS writes and maintains the evaluation logic.
+  S3PublicReadRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${LabName}-s3-no-public-read'
+      Description: Flags any bucket allowing public read
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_READ_PROHIBITED
+      Scope:
+        ComplianceResourceTypes: [AWS::S3::Bucket]
+
+  SshRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${LabName}-no-unrestricted-ssh'
+      Description: Flags security groups allowing 0.0.0.0/0 on port 22
+      Source:
+        Owner: AWS
+        SourceIdentifier: INCOMING_SSH_DISABLED
+      Scope:
+        ComplianceResourceTypes: [AWS::EC2::SecurityGroup]
+
+  # ------------------------------------------------------------------ the brake
+  # A budget is the backstop this whole curriculum has needed. It costs nothing,
+  # it is account-wide, and it catches anything a teardown ever misses.
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${LabName}-monthly'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        # ACTUAL fires after the money is spent.
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+        # FORECASTED fires before it is, which is the one that actually helps.
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+
+Outputs:
+  TrailName:   { Value: !Ref Trail }
+  AuditBucket: { Value: !Ref AuditBucket }
+  BudgetName:  { Value: !Sub '${LabName}-monthly' }
+  LookupRecentEvents:
+    Description: CloudTrail answers who did what - no S3 reading required
+    Value: !Sub 'aws cloudtrail lookup-events --max-results 10 --query "Events[].{time:EventTime,user:Username,event:EventName}" --output table --region ${AWS::Region}'
+  WhoDeletedThings:
+    Value: !Sub 'aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=DeleteStack --query "Events[].{time:EventTime,user:Username}" --output table --region ${AWS::Region}'
+  ConfigCompliance:
+    Value: !Sub 'aws configservice describe-compliance-by-config-rule --query "ComplianceByConfigRules[].{rule:ConfigRuleName,state:Compliance.ComplianceType}" --output table --region ${AWS::Region}'
+  EstimatedCost:
+    Value: 'Trail free (first copy of management events); Config ~$0.003 per item; budget free'

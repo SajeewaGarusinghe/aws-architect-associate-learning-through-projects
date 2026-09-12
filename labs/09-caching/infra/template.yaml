@@ -1,0 +1,301 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 09 - The cache-aside pattern. A Lambda inside a VPC reads through
+  ElastiCache for Redis to DynamoDB, so the latency difference between a cache
+  hit and a miss is visible in the response itself.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-09
+  VpcCidr:
+    Type: String
+    Default: 10.50.0.0/16
+
+Resources:
+
+  # ---------------------------------------------------------------- networking
+  # Lab 04 pointedly had no VPC. This one needs one, because ElastiCache is
+  # reachable only from inside a VPC - which is exactly when a Lambda should be
+  # attached to one, and the only good reason to do it.
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-vpc' }]
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.50.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-private-a' }]
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.50.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-private-b' }]
+
+  # No internet route and no NAT. The function talks to Redis over private
+  # addresses, and to DynamoDB through a gateway endpoint, which is free.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-rt-private' }]
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetA, RouteTableId: !Ref PrivateRouteTable }
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTable }
+
+  # Without this the VPC-attached function could not reach DynamoDB at all -
+  # a NAT gateway would be the alternative, at $0.059/hr instead of nothing.
+  DynamoDbEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref PrivateRouteTable]
+
+  # ------------------------------------------------------------ security groups
+  FunctionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda ENIs
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 6379, ToPort: 6379, CidrIp: !Ref VpcCidr, Description: Redis }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: !Ref VpcCidr, Description: DynamoDB via gateway endpoint }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-sg-fn' }]
+
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Redis - reachable only from the function security group
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-sg-cache' }]
+
+  CacheIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref CacheSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6379
+      ToPort: 6379
+      SourceSecurityGroupId: !Ref FunctionSecurityGroup
+      Description: Redis from the Lambda security group only
+
+  # --------------------------------------------------------------------- cache
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: !Sub '${LabName} private subnets'
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+
+  # A single node: no replica, no failover. The cache is deliberately treated as
+  # disposable - losing it costs latency, never data.
+  Cache:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: !Sub '${LabName}-redis'
+      Engine: redis
+      CacheNodeType: cache.t3.micro
+      NumCacheNodes: 1
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      VpcSecurityGroupIds: [!GetAtt CacheSecurityGroup.GroupId]
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-redis' }]
+
+  # ------------------------------------------------------------------- storage
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub '${LabName}-products'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-products' }]
+
+  # ------------------------------------------------------------------ compute
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # The VPC variant. A VPC-attached function needs permission to create
+        # and delete the elastic network interfaces it runs behind.
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: products-table
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt Table.Arn
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-fn-role' }]
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LabName}-api'
+      RetentionInDays: 1
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: !Sub '${LabName}-api'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt FunctionRole.Arn
+      Timeout: 20
+      MemorySize: 512
+      VpcConfig:
+        SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+        SecurityGroupIds: [!GetAtt FunctionSecurityGroup.GroupId]
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          REDIS_HOST: !GetAtt Cache.RedisEndpoint.Address
+          REDIS_PORT: !GetAtt Cache.RedisEndpoint.Port
+      Code:
+        ZipFile: |
+          import json, os, socket, time
+          import boto3
+
+          TABLE = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
+          HOST = os.environ["REDIS_HOST"]
+          PORT = int(os.environ["REDIS_PORT"])
+          TTL = 60
+
+          # A tiny RESP client. The point of this lab is the cache-aside pattern
+          # and the latency gap, not a dependency layer.
+          def redis(*args):
+              out = f"*{len(args)}\r\n".encode()
+              for a in args:
+                  a = str(a).encode()
+                  out += b"$%d\r\n%s\r\n" % (len(a), a)
+              s = socket.create_connection((HOST, PORT), timeout=3)
+              try:
+                  s.sendall(out)
+                  return s.recv(65536)
+              finally:
+                  s.close()
+
+          def cache_get(key):
+              raw = redis("GET", key)
+              if raw.startswith(b"$-1"):
+                  return None
+              parts = raw.split(b"\r\n", 1)
+              return parts[1].rstrip(b"\r\n").decode() if len(parts) > 1 else None
+
+          def handler(event, context):
+              qs = event.get("queryStringParameters") or {}
+              pid = qs.get("id", "p-1")
+              started = time.time()
+
+              try:
+                  cached = cache_get(f"product:{pid}")
+              except Exception as exc:
+                  print(f"cache unavailable: {type(exc).__name__}: {exc}")
+                  cached = None
+
+              if cached:
+                  return done(200, {
+                      "id": pid, "source": "CACHE HIT", "item": json.loads(cached),
+                      "ms": round((time.time() - started) * 1000, 1),
+                  })
+
+              # Miss: read the system of record, then populate the cache with a
+              # TTL. The TTL is what bounds how stale a reader can ever be.
+              res = TABLE.get_item(Key={"id": pid})
+              item = res.get("Item")
+              if not item:
+                  item = {"id": pid, "name": f"Product {pid}", "price": "19.99"}
+                  TABLE.put_item(Item=item)
+
+              payload = json.dumps(item, default=str)
+              try:
+                  redis("SETEX", f"product:{pid}", TTL, payload)
+              except Exception as exc:
+                  print(f"cache write failed: {exc}")
+
+              return done(200, {
+                  "id": pid, "source": "CACHE MISS -> DynamoDB", "item": json.loads(payload),
+                  "ms": round((time.time() - started) * 1000, 1),
+                  "note": f"cached for {TTL}s; call again to see the hit",
+              })
+
+          def done(code, body):
+              return {"statusCode": code,
+                      "headers": {"content-type": "application/json"},
+                      "body": json.dumps(body, default=str)}
+
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-api' }]
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${LabName}-api'
+      ProtocolType: HTTP
+
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub 'integrations/${Integration}'
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+Outputs:
+  ApiUrl:
+    Description: Call twice - the second call reports CACHE HIT and a smaller ms
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com?id=p-1'
+  RedisEndpoint: { Value: !GetAtt Cache.RedisEndpoint.Address }
+  TableName:     { Value: !Ref Table }
+  FunctionName:  { Value: !Ref ApiFunction }
+  VpcId:         { Value: !Ref Vpc }
+  EstimatedCost:
+    Value: 'cache.t3.micro about $0.028/hr; everything else bills per request'
