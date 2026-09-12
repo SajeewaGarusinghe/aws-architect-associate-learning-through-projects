@@ -1,3 +1,7 @@
 # Transient deploy state — the permanent record is teardown-report.md
 .live-state
 .live-resources
+.auto-teardown.pid
+.auto-teardown.cancel
+.auto-teardown.deadline
+.auto-teardown.log

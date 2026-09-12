@@ -6,7 +6,7 @@ Account `213104855858` · region `ap-southeast-2` · one lab at a time, destroye
 
 | # | Lab | Status | Live for | Cost | Domains |
 |---|---|---|---|---|---|
-| 01 | [VPC from scratch](labs/01-vpc-from-scratch/) | Phase A complete — ready to deploy | — | — | D1 D2 D4 |
+| 01 | [VPC from scratch](labs/01-vpc-from-scratch/) | Deployed &amp; destroyed 2026-09-12 | 19 min | $0.0368 | D1 D2 D4 |
 | 02 | EC2 + ALB + Auto Scaling, multi-AZ | Not started | | | D2 D3 |
 | 03 | RDS Multi-AZ + failover test | Not started | | | D1 D2 |
 | 04 | Serverless API (API Gateway + Lambda + DynamoDB) | Not started | | | D3 D4 |
@@ -17,7 +17,7 @@ Account `213104855858` · region `ap-southeast-2` · one lab at a time, destroye
 | 09 | Caching & performance (ElastiCache, read replicas) | Not started | | | D3 |
 | 10 | Cost & governance (Config, CloudTrail, Budgets) | Not started | | | D4 D1 |
 
-**Running total: $0.00**
+**Running total: $0.0368**
 
 ## Exam domain coverage
 
@@ -40,4 +40,4 @@ What `./scripts/verify-clean.sh` expects to find when no lab is running:
 
 Anything else is a leak from a previous lab and should be investigated before starting a new one.
 
-Verified clean: **2026-09-12 08:22Z**
+Verified clean: **2026-09-12 09:09Z** — after Lab 01 teardown
