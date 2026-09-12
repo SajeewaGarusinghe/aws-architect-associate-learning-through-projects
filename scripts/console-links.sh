@@ -35,10 +35,27 @@ echo "  Security grps  $C/vpcconsole/home?region=$R#SecurityGroups:VpcId=$VPC"
 echo "  Network ACLs   $C/vpcconsole/home?region=$R#acls:VpcId=$VPC"
 echo
 echo "Compute:"
+echo "  Instances      $C/ec2/home?region=$R#Instances:tag:Project=$TAG_PROJECT"
 [[ "$INST" != "None" ]] && {
 echo "  Instance       $C/ec2/home?region=$R#InstanceDetails:instanceId=$INST"
 echo "  Shell (SSM)    $C/systems-manager/session-manager/$INST?region=$R"; } || \
 echo "  (no lab instance running)"
+
+# Load balancing and Auto Scaling — only printed when the lab actually has them.
+ALBDNS=$(aws elbv2 describe-load-balancers \
+  --query "LoadBalancers[?starts_with(LoadBalancerName,'saa-lab-')]|[0].DNSName" --output text 2>/dev/null || echo None)
+if [[ "$ALBDNS" != "None" && -n "$ALBDNS" ]]; then
+echo
+echo "Load balancing:"
+echo "  THE SITE       http://$ALBDNS   ← reload this repeatedly"
+echo "  Load balancers $C/ec2/home?region=$R#LoadBalancers:"
+echo "  Target groups  $C/ec2/home?region=$R#TargetGroups:"
+fi
+ASG=$(aws autoscaling describe-auto-scaling-groups \
+  --query "AutoScalingGroups[?starts_with(AutoScalingGroupName,'saa-lab-')]|[0].AutoScalingGroupName" --output text 2>/dev/null || echo None)
+if [[ "$ASG" != "None" && -n "$ASG" ]]; then
+echo "  Auto Scaling   $C/ec2/home?region=$R#AutoScalingGroupDetails:id=$ASG;view=activity"
+fi
 echo
 echo "Observability:"
 echo "  Flow logs      $C/cloudwatch/home?region=$R#logsV2:log-groups"

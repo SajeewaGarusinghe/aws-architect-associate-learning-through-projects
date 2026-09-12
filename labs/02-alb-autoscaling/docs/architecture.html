@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Load Balanced Web Tier</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<style>
+  html,body{margin:0;padding:0;}
+  body{background:#5a5f66;}
+  .sheet{width:8.5in;min-height:11in;margin:24px auto;padding:0.7in;background:#fff;
+    box-shadow:0 2px 18px rgba(0,0,0,.35);box-sizing:border-box;}
+  @page{size:letter;margin:0.7in;}
+  @media print{ body{background:#fff;} .sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;} }
+
+  :root{
+    --ink:#232F3E; --slate:#37475A; --orange:#FF9900; --orange-d:#EC7211;
+    --gray:#545B64; --gray-l:#879196; --wash:#FAFAFA; --line:#E3E7EB;
+    --blue:#2D72B8; --purple:#8B5CF6;
+  }
+  *{box-sizing:border-box}
+  body{color:var(--ink);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;}
+  .sheet{font-size:11pt;line-height:1.6;color:#1c2430;}
+  p{margin:0 0 10px;}
+  strong{font-weight:600;color:var(--ink);}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.2pt;background:#EEF1F4;border:1px solid #E0E5EA;border-radius:4px;padding:1px 5px;color:#2a3542;}
+
+  .cover{background:var(--ink);color:#fff;margin:-0.7in -0.7in 26px;padding:66px 0.7in 48px;position:relative;overflow:hidden;}
+  .cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--orange);}
+  .cover::before{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.16),transparent 68%);}
+  .cover .eyebrow{font-size:11pt;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:18px;}
+  .cover h1{font-size:33pt;line-height:1.08;margin:0 0 14px;font-weight:800;letter-spacing:-.015em;max-width:16em;text-wrap:balance;}
+  .cover .sub{font-size:12.5pt;color:#c7ced6;max-width:34em;line-height:1.55;}
+  .cover .meta{margin-top:28px;display:flex;gap:30px;flex-wrap:wrap;font-size:9.5pt;color:#9aa5b1;}
+  .cover .meta b{color:#fff;font-weight:700;display:block;font-size:16pt;margin-bottom:2px;font-variant-numeric:tabular-nums;}
+
+  h2.sec{font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-d);font-weight:700;margin:0 0 4px;}
+  .p-h{font-size:16pt;font-weight:800;color:var(--ink);margin:0 0 6px;line-height:1.22;letter-spacing:-.01em;}
+  .p-h .num{color:var(--orange-d);}
+  .head-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;}
+
+  .sub-lbl{display:flex;align-items:center;gap:9px;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--orange-d);margin:16px 0 9px;}
+  .sub-lbl::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,var(--orange) 0%,var(--line) 100%);}
+
+  .p{margin-bottom:26px;}
+  .lede{background:var(--wash);border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:6px;padding:14px 18px;margin-bottom:6px;break-inside:avoid;}
+  .lede .tag{display:inline-block;font-size:8pt;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--slate);padding:2px 8px;border-radius:3px;margin-bottom:9px;}
+  .lede p{margin:0;font-size:10.5pt;color:#2a3542;}
+
+  .reqs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;break-inside:avoid;}
+  .reqs .col{border:1px solid var(--line);border-radius:6px;padding:10px 13px;background:#fff;}
+  .reqs .col h4{margin:0 0 6px;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:5px;}
+  .reqs ul{margin:0;padding-left:15px;font-size:9.5pt;color:#33404d;line-height:1.5;}
+  .reqs li{margin-bottom:4px;}
+  .reqs li::marker{color:var(--orange);}
+
+  .svc{margin:6px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .svc .r{display:flex;border-top:1px solid var(--line);font-size:9.7pt;}
+  .svc .r:first-child{border-top:none;}
+  .svc .name{flex:0 0 30%;padding:9px 13px;font-weight:700;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:flex-start;gap:7px;}
+  .svc .name .dot{width:8px;height:8px;border-radius:2px;flex:none;margin-top:5px;}
+  .svc .role{flex:1;padding:9px 13px;color:#3a4552;}
+  .svc .role b{color:var(--ink);}
+
+  .callout{border-radius:6px;padding:11px 14px;margin:12px 0;font-size:9.8pt;line-height:1.5;break-inside:avoid;}
+  .callout .ct{font-weight:700;display:block;margin-bottom:2px;font-size:9pt;letter-spacing:.03em;}
+  .callout.key{background:#F0F6FC;border:1px solid #CFE2F3;color:#1c3a52;}
+  .callout.key .ct{color:#1f6feb;}
+  .callout.tip{background:#FFF4E0;border:1px solid #FBD79A;color:#5a3d0a;}
+  .callout.tip .ct{color:var(--orange-d);}
+  .callout.warn{background:#FDECEC;border:1px solid #F5C2C2;color:#6b1d1d;}
+  .callout.warn .ct{color:#C0392B;}
+
+  .flowsteps{margin:6px 0;}
+  .flowsteps .step{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line);break-inside:avoid;}
+  .flowsteps .step:first-child{border-top:none;}
+  .flowsteps .idx{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--orange);font-weight:800;font-size:9.5pt;display:flex;align-items:center;justify-content:center;}
+  .flowsteps .bd{flex:1;font-size:9.7pt;color:#3a4552;}
+  .flowsteps .bd b{color:var(--ink);}
+
+  .why{margin:12px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .why .cap-t{background:var(--ink);color:#fff;padding:6px 13px;font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;}
+  .why .row{display:flex;border-top:1px solid var(--line);font-size:9.6pt;}
+  .why .opt{flex:0 0 34%;padding:8px 12px;font-weight:600;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);}
+  .why .rea{flex:1;padding:8px 12px;color:#3a4552;}
+  .why .opt.no::before{content:"\2717  ";color:#C0392B;font-weight:800;}
+  .why .opt.yes{background:#EAF7F1;}
+  .why .opt.yes::before{content:"\2713  ";color:#1B9E77;font-weight:800;}
+
+  .spine{border:1px solid var(--line);border-radius:7px;margin:16px 0 4px;overflow:hidden;break-inside:avoid;background:#fff;box-shadow:0 1px 2px rgba(35,47,62,.05);}
+  .spine .hd{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:8px 15px;font-size:8.6pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;}
+  .spine .hd .clk{margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--orange);text-transform:none;}
+  .spine .bd{padding:11px 15px 13px;}
+  .spine .tl{margin-bottom:11px;}
+  .spine .ph{display:flex;gap:12px;padding:6px 0;border-top:1px dashed var(--line);}
+  .spine .ph:first-child{border-top:none;padding-top:0;}
+  .spine .ph .mn{flex:0 0 64px;font-size:7.8pt;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--orange-d);padding-top:2px;}
+  .spine .ph .tx{flex:1;font-size:9.6pt;color:#33404d;line-height:1.5;}
+  .spine .ph .tx b{color:var(--ink);font-weight:600;}
+  .spine .three{background:var(--wash);border:1px solid var(--line);border-radius:5px;padding:9px 13px;margin-bottom:9px;}
+  .spine .three .lb,.spine .flag .lb{font-size:7.6pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:5px;display:block;}
+  .spine .three ol{margin:0;padding-left:16px;font-size:9.4pt;color:#2a3542;line-height:1.5;}
+  .spine .three li{margin-bottom:2px;}
+  .spine .three li::marker{color:var(--orange-d);font-weight:700;}
+  .spine .flag{font-size:9.3pt;line-height:1.45;color:#6b1d1d;background:#FDECEC;border:1px solid #F5C2C2;border-radius:5px;padding:8px 12px;}
+  .spine .flag .lb{color:#C0392B;}
+  .spine .flag b{color:#8f2a20;font-weight:600;}
+
+  figure.dg{margin:16px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;break-inside:avoid;background:#fff;}
+  figure.dg .cap{background:var(--wash);border-top:1px solid var(--line);padding:7px 14px;font-size:8.8pt;color:var(--gray);}
+  figure.dg .cap b{color:var(--orange-d);font-weight:700;}
+  figure.dg svg{display:block;width:100%;height:auto;}
+
+  .d-bg{fill:#fff;}
+  .vpc{fill:#F5F8FB;stroke:#2D72B8;stroke-width:1.5;stroke-dasharray:6 4;}
+  .region{fill:none;stroke:#545B64;stroke-width:1.4;stroke-dasharray:2 3;}
+  .az{fill:#FBFDFF;stroke:#879196;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-pub{fill:#EAF7F1;stroke:#1B9E77;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-priv{fill:#EEF4FB;stroke:#2D72B8;stroke-width:1;stroke-dasharray:4 3;}
+  .asg{fill:none;stroke:#8B5CF6;stroke-width:1.5;stroke-dasharray:7 4;}
+  .tile{fill:#232F3E;}
+  .tile-o{fill:#FF9900;}
+  .tile-g{fill:#545B64;}
+  .tile-w{fill:#fff;stroke:#232F3E;stroke-width:1.3;}
+  .tile-ghost{fill:#F4F6F8;stroke:#A9B4BF;stroke-width:1.2;stroke-dasharray:5 4;}
+  .t-lbl{font:600 11px 'Inter',sans-serif;fill:#fff;text-anchor:middle;}
+  .t-lbli{font:600 11px 'Inter',sans-serif;fill:#232F3E;text-anchor:middle;}
+  .t-lblg{font:600 10px 'Inter',sans-serif;fill:#6B7480;text-anchor:middle;}
+  .t-sub{font:500 8.5px 'Inter',sans-serif;fill:#fff;opacity:.8;text-anchor:middle;}
+  .t-subd{font:500 8.5px 'Inter',sans-serif;fill:#232F3E;opacity:.75;text-anchor:middle;}
+  .zone-lbl{font:700 9px 'Inter',sans-serif;letter-spacing:.07em;}
+  .flow{font:500 8.5px 'Inter',sans-serif;fill:#545B64;}
+  .ln{stroke:#545B64;stroke-width:1.6;fill:none;}
+  .ln-o{stroke:#FF9900;stroke-width:2;fill:none;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px 26px;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:8px 0;font-size:9.4pt;break-inside:avoid;}
+  .legend .grp{min-width:160px;}
+  .legend .grp .h{font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--gray);font-weight:700;margin-bottom:7px;}
+  .legend .it{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:#33404d;}
+  .legend .chip{width:26px;height:15px;border-radius:3px;flex:none;}
+
+  .costs{width:100%;border-collapse:collapse;font-size:9.6pt;margin:8px 0;break-inside:avoid;}
+  .costs th{text-align:left;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1.5px solid var(--line);padding:6px 10px;}
+  .costs td{padding:7px 10px;border-bottom:1px solid var(--line);color:#3a4552;}
+  .costs td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;font-size:9pt;}
+  .costs tr.tot td{font-weight:700;color:var(--ink);border-bottom:none;border-top:1.5px solid var(--ink);}
+
+  @media (max-width:900px){
+    .sheet{width:auto;min-height:0;margin:0;padding:24px 16px;}
+    .cover{margin:-24px -16px 26px;padding:40px 16px 32px;}
+    .cover h1{font-size:26pt;}
+    .reqs{grid-template-columns:1fr;}
+    .svc .r,.why .row{flex-direction:column;}
+    .svc .name,.why .opt{flex:1;border-right:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#545B64"/></marker>
+  <marker id="arrow-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FF9900"/></marker>
+</defs></svg>
+
+<div class="sheet">
+
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 02 — Load Balanced Web Tier</h1>
+    <div class="sub">One load balancer spanning two availability zones, in front of an Auto Scaling group whose instances have no route to the internet at all — and do not need one.</div>
+    <div class="meta">
+      <div><b>2</b>availability zones</div>
+      <div><b>2→4</b>instances</div>
+      <div><b>$0.052</b>per hour live</div>
+      <div><b>0</b>NAT gateways</div>
+    </div>
+  </div>
+
+  <p>Lab 01 built the network. This lab puts a real workload inside it and makes the second
+  availability zone earn its place. The private subnet in AZ&nbsp;b, left deliberately empty last
+  time, now runs half the fleet.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: how an Application Load Balancer spans availability zones, target groups and health
+    checks, Auto Scaling group sizing and instance replacement, the difference between EC2 and ELB
+    health check types, and security groups that reference other security groups. Out of scope:
+    HTTPS and certificates, scaling policies driven by metrics, and any database — the tier here
+    is deliberately stateless.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> One entry point, two zones, no way out</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>The load balancer is the only component in this architecture with a public address; the
+      instances behind it have no public IP, no NAT gateway and no default route, so the only
+      traffic they can ever see is traffic the load balancer forwards to them.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Serve HTTP from more than one availability zone</li>
+          <li>Replace an instance automatically when it fails</li>
+          <li>Survive the loss of an entire availability zone</li>
+          <li>Show which instance answered each request</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Instances unreachable except through the load balancer</li>
+          <li>No public IP on any instance</li>
+          <li>A failed web server is replaced, not just a failed host</li>
+          <li>IMDSv2 required on every instance</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>No NAT gateway — the tier must need no egress</li>
+          <li>CIDR <code>10.30.0.0/16</code>, distinct from Labs 00 and 01</li>
+          <li>Under $0.06/hour while live</li>
+          <li>Destroyed by a single <code>delete-stack</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#545B64"></span>Internet Gateway</div>
+        <div class="role">Attached to the VPC, with a <code>0.0.0.0/0</code> route in the public route table only. <b>Why:</b> the load balancer's nodes live in the public subnets and need it; nothing else in this stack does.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Public subnets ×2</div>
+        <div class="role"><code>10.30.1.0/24</code> and <code>10.30.2.0/24</code>, one per AZ. <b>Why:</b> an ALB requires subnets in at least two availability zones — that requirement is what makes it inherently multi-AZ, and it is why these two subnets exist at all.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Application Load Balancer</div>
+        <div class="role">Internet-facing, one logical resource with a node in each public subnet, resolved by a single DNS name. <b>Why:</b> it terminates every client connection, so the fleet behind it can change size and membership without any client noticing.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#37475A"></span>Target group</div>
+        <div class="role">HTTP :80, health check <code>/</code> every 15 seconds, healthy after 2 passes, unhealthy after 2 failures, deregistration delay shortened to 30 seconds. <b>Why:</b> the target group — not the load balancer — owns the health check, and it is the object that decides which instances receive traffic.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>Auto Scaling group</div>
+        <div class="role">Minimum 2, desired 2, maximum 4, spread across both private subnets, with health check type <code>ELB</code>. <b>Why:</b> it keeps the fleet at the desired size and distributes instances evenly across AZs automatically — no manual placement decisions.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>EC2 t3.micro ×2</div>
+        <div class="role">Amazon Linux 2023 in the private subnets, IMDSv2 required, serving a page naming their own instance ID and availability zone. <b>Why:</b> the page makes load balancing visible — reload it and watch the zone change.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Launch template</div>
+        <div class="role">The versioned blueprint the Auto Scaling group uses: AMI, instance type, security group, metadata options, user data. <b>Why:</b> launch templates support versioning and every current EC2 feature; launch <em>configurations</em>, their predecessor, are deprecated and cannot be modified.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>ALB security group</div>
+        <div class="role">Inbound TCP 80 from <code>0.0.0.0/0</code>. <b>Why:</b> this is the only place in the stack where the internet is allowed in, which makes the attack surface a single reviewable object.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>App security group</div>
+        <div class="role">Inbound TCP 80 whose source is <em>the ALB's security group</em>, not a CIDR range. <b>Why:</b> the rule keeps working as instances are replaced and subnets change, and it cannot accidentally admit anything else in the VPC. This construct appears constantly on the exam.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>Private route table</div>
+        <div class="role">Carries the <code>local</code> route and nothing else — no <code>0.0.0.0/0</code> entry at all. <b>Why:</b> with no NAT gateway and no default route, the web tier has literally no internet path. It saves $0.059/hour and removes a whole category of risk.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 560" role="img" aria-label="An internet-facing Application Load Balancer spanning public subnets in two availability zones, forwarding to an Auto Scaling group whose EC2 instances sit in private subnets with no internet route.">
+        <rect class="d-bg" x="0" y="0" width="760" height="560"/>
+
+        <rect class="tile-w" x="300" y="10" width="160" height="34" rx="5"/>
+        <text class="t-lbli" x="380" y="32">Clients on the internet</text>
+
+        <rect class="region" x="8" y="62" width="744" height="478" rx="8"/>
+        <text class="zone-lbl" x="20" y="80" fill="#545B64">REGION · ap-southeast-2</text>
+
+        <rect class="vpc" x="22" y="96" width="712" height="404" rx="6"/>
+        <text class="zone-lbl" x="34" y="114" fill="#2D72B8">VPC · 10.30.0.0/16</text>
+
+        <rect class="tile-g" x="330" y="124" width="100" height="30" rx="4"/>
+        <text class="t-lbl" x="380" y="143">Internet GW</text>
+
+        <rect class="az" x="40" y="176" width="330" height="290" rx="5"/>
+        <text class="zone-lbl" x="50" y="194" fill="#545B64">ap-southeast-2a</text>
+        <rect class="az" x="386" y="176" width="330" height="290" rx="5"/>
+        <text class="zone-lbl" x="396" y="194" fill="#545B64">ap-southeast-2b</text>
+
+        <rect class="sub-pub" x="52" y="204" width="306" height="78" rx="4"/>
+        <text class="zone-lbl" x="62" y="220" fill="#1B9E77">public · 10.30.1.0/24</text>
+        <rect class="sub-pub" x="398" y="204" width="306" height="78" rx="4"/>
+        <text class="zone-lbl" x="408" y="220" fill="#1B9E77">public · 10.30.2.0/24</text>
+
+        <rect class="tile-o" x="180" y="232" width="400" height="42" rx="4"/>
+        <text class="t-lbli" x="380" y="251">Application Load Balancer</text>
+        <text class="t-subd" x="380" y="265">one resource · one DNS name · a node in each AZ</text>
+
+        <rect class="sub-priv" x="52" y="310" width="306" height="134" rx="4"/>
+        <text class="zone-lbl" x="62" y="326" fill="#2D72B8">private · 10.30.11.0/24</text>
+        <rect class="sub-priv" x="398" y="310" width="306" height="134" rx="4"/>
+        <text class="zone-lbl" x="408" y="326" fill="#2D72B8">private · 10.30.12.0/24</text>
+
+        <rect class="asg" x="60" y="336" width="640" height="100" rx="6"/>
+        <text class="zone-lbl" x="70" y="352" fill="#8B5CF6">AUTO SCALING GROUP · min 2 · desired 2 · max 4</text>
+
+        <rect class="tile" x="90" y="362" width="118" height="52" rx="4"/>
+        <text class="t-lbl" x="149" y="384">EC2 t3.micro</text>
+        <text class="t-sub" x="149" y="398">no egress path</text>
+        <rect class="tile-ghost" x="224" y="362" width="118" height="52" rx="4"/>
+        <text class="t-lblg" x="283" y="392">scale to 4</text>
+
+        <rect class="tile" x="440" y="362" width="118" height="52" rx="4"/>
+        <text class="t-lbl" x="499" y="384">EC2 t3.micro</text>
+        <text class="t-sub" x="499" y="398">no egress path</text>
+        <rect class="tile-ghost" x="574" y="362" width="118" height="52" rx="4"/>
+        <text class="t-lblg" x="633" y="392">scale to 4</text>
+
+        <rect class="tile-w" x="52" y="472" width="212" height="24" rx="3"/>
+        <text class="t-lbli" x="158" y="488" style="font-size:9px">rt-public → 0.0.0.0/0 → igw</text>
+        <rect class="tile-w" x="290" y="472" width="240" height="24" rx="3"/>
+        <text class="t-lbli" x="410" y="488" style="font-size:9px">rt-private → local route only</text>
+
+        <path class="ln-o" d="M380,44 V120" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="388" y="90">HTTP :80 from anywhere</text>
+
+        <path class="ln-o" d="M380,154 V228" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="388" y="170">internet-facing</text>
+
+        <path class="ln" d="M250,274 V296 H149 V358" marker-end="url(#arrow)"/>
+        <path class="ln" d="M510,274 V296 H499 V358" marker-end="url(#arrow)"/>
+        <text class="flow" x="262" y="292">health check / every 15s · source = ALB security group</text>
+
+        <text class="flow" x="546" y="488">No NAT gateway anywhere in this stack.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — Traffic enters at exactly one point, in orange. Below the load balancer the arrows are grey because that traffic never leaves the VPC: the private route table has no default route, so the instances can answer requests but can never originate one.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = tier</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Billable edge component</div>
+        <div class="it"><span class="chip" style="background:#545B64"></span>Free edge component</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Compute</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#F4F6F8;border:1.2px dashed #A9B4BF"></span>Capacity headroom, not running</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Route table</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style = path</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Internet-facing traffic</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Traffic that stays in the VPC</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">A browser resolves the load balancer's DNS name. It returns the public addresses of the ALB nodes — <b>more than one, one per availability zone</b> — so DNS itself is the first layer of distribution.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">The client opens a TCP connection to one node. The ALB security group admits it on port 80; it is the only inbound rule in the stack that mentions the internet.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd">The ALB <b>terminates that connection</b> and opens its own, separate connection to a healthy target chosen by round robin. The client and the instance never speak directly.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">The app security group evaluates the new connection. Its rule names the ALB's security group as the source, so the packet is admitted regardless of which node or private address it came from.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">The instance answers from a page written at boot from its own metadata. The reply returns through the ALB; the security group is stateful, so no outbound rule is needed.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd"><b>Continuously and independently:</b> the target group requests <code>/</code> from every registered target every 15 seconds. Two consecutive failures mark a target unhealthy and it stops receiving traffic.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">Because the Auto Scaling group's health check type is <code>ELB</code>, that unhealthy verdict also causes the group to terminate the instance and launch a replacement in the same availability zone.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">What should the Auto Scaling group treat as "unhealthy"?</div>
+      <div class="row"><div class="opt no">Health check type <code>EC2</code></div><div class="rea">The default. It watches only the hypervisor-level status checks, so it replaces an instance that has crashed or lost networking — but not one whose operating system is fine while the web server has died. The load balancer stops sending traffic there, and the group never notices.</div></div>
+      <div class="row"><div class="opt yes">Health check type <code>ELB</code></div><div class="rea">Chosen. The group inherits the target group's verdict, so a failed <em>application</em> is replaced, not just a failed host. Requires a grace period — here 120 seconds — or instances get killed before their web server has finished starting.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">How should the web tier restrict inbound traffic?</div>
+      <div class="row"><div class="opt no">Allow the VPC CIDR <code>10.30.0.0/16</code></div><div class="rea">Simple, and wrong. Every resource in the VPC — now or in future — can reach the web tier on port 80, including anything an attacker manages to land elsewhere in the network.</div></div>
+      <div class="row"><div class="opt no">Allow the public subnet CIDRs</div><div class="rea">Narrower, but still admits anything that ever lands in those subnets, and breaks if the subnets are renumbered or a third AZ is added.</div></div>
+      <div class="row"><div class="opt yes">Source = the ALB's security group</div><div class="rea">Chosen. The permission follows the load balancer itself rather than any address range, so it survives instance replacement, subnet changes and new AZs, and admits nothing else by construction.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">Two objects, two different jobs</span>
+      The <strong>target group</strong> decides which instances receive <em>traffic</em>. The
+      <strong>Auto Scaling group</strong> decides which instances <em>exist</em>. They are separate
+      systems, and they only agree because health check type is set to <code>ELB</code>. Leave it
+      at the default <code>EC2</code> and you get the classic failure: a broken instance that the
+      load balancer has correctly stopped using, sitting there indefinitely, never replaced,
+      quietly reducing your capacity.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">Exactly one inbound rule in the stack mentions the internet, and it is on the load balancer. The instances have no public address and no route to one. IMDSv2 is required, which blocks the SSRF-style metadata theft that IMDSv1 allowed. Traffic is plain HTTP — acceptable only because this is a lab; production would terminate TLS at the ALB with an ACM certificate.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">Manual between 2 and 4 instances here. The Auto Scaling group balances across AZs on its own. In production this is where a target tracking policy goes — "keep average CPU at 50%" — which is almost always the right exam answer over step or simple scaling.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">Losing one instance: the group replaces it in about two minutes, and the ALB drains it in 30 seconds meanwhile. Losing a whole AZ: the ALB stops resolving to that zone's node and the group rebalances into the survivor. <b>Blast radius is one AZ</b> — genuinely better than Lab 01, where a single NAT gateway made AZ&nbsp;a critical for everything.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">Removing the NAT gateway saves $0.059/hour — more than the load balancer itself costs. It was possible only because this workload genuinely needs no egress; a tier that must fetch packages or call third-party APIs cannot make the same trade. The ALB bills hourly plus capacity units, and like the NAT gateway it charges whether or not anyone visits.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Four to five minutes.</b> The ALB takes the longest to provision. Targets stay <code>initial</code> for up to a minute after the instances are running — the health check needs two consecutive passes before traffic flows, so <b>expect a 503 if you load the page too early.</b></div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Load the site and reload repeatedly. The availability zone on the page changes as the ALB round-robins. Watch the same two instances appear in the target group as <code>healthy</code>.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Terminate one instance and watch three systems react in order: the target group marks it <code>unhealthy</code>, then <code>draining</code>; the Auto Scaling group launches a replacement <b>in the same AZ</b>; the new instance passes two health checks and starts serving. Then point the health check at a path that does not exist and watch every target fail at once — the site returns 503 while the instances themselves are perfectly fine.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">One <code>delete-stack</code>. The Auto Scaling group must terminate its instances before the subnets can be deleted, so this takes longer than Lab 01 — around four minutes.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>The target group's <b>Targets</b> tab during the failure injection — it is the only place where <code>initial</code>, <code>healthy</code>, <code>unhealthy</code> and <code>draining</code> are all visible as they happen.</li>
+            <li>The Auto Scaling group's <b>Activity</b> tab, which narrates its own decisions in plain English, including why it terminated something.</li>
+            <li>Which AZ the replacement instance lands in. The group rebalances to keep the zones even — it does not simply launch wherever is convenient.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never set the Auto Scaling health check grace period shorter than the time an instance
+          needs to boot and start serving. Too short and the group kills each new instance before it
+          can pass its first health check, then launches another, and another — <b>an infinite
+          replacement loop that bills for every one of them</b>. If an ASG is "constantly cycling
+          instances", the grace period is the first thing to check.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / hour</th><th style="text-align:right">20 minutes</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>Application Load Balancer</td><td class="n">0.0252</td><td class="n">0.0084</td><td>Plus capacity units; negligible at lab traffic</td></tr>
+        <tr><td>EC2 t3.micro ×2</td><td class="n">0.0264</td><td class="n">0.0088</td><td>$0.0132 each, on-demand</td></tr>
+        <tr><td>NAT Gateway</td><td class="n">0.0000</td><td class="n">0.0000</td><td><strong>Removed by design</strong> — saves $0.059/hr</td></tr>
+        <tr><td>VPC, subnets, IGW, route tables, security groups, target group, ASG, launch template</td><td class="n">0.0000</td><td class="n">0.0000</td><td>No hourly charge</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.0516</td><td class="n">0.0172</td><td>Cheaper than Lab 01</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> No HTTPS listener or ACM certificate — worth knowing
+    that ACM certificates are free and that TLS terminates at the load balancer, but neither needs
+    to be deployed to be understood. No metric-driven scaling policy, because watching CPU climb
+    takes longer than this lab's entire budget. No database: the tier is stateless on purpose, so
+    that any instance can answer any request, which is exactly the property that makes horizontal
+    scaling work. Lab 03 adds the database and the state problem that comes with it.</p>
+
+    <div class="callout warn">
+      <span class="ct">A note on the teardown</span>
+      An Auto Scaling group will faithfully replace instances you terminate by hand — that is its
+      entire purpose. Deleting the stack is therefore the <em>only</em> correct way to stop this
+      lab; terminating the instances individually just triggers replacements and leaves the load
+      balancer billing. If a teardown ever appears stuck, it is almost always waiting for the
+      group to drain, which it will do on its own.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

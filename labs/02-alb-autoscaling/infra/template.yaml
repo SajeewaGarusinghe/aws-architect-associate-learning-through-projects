@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 02 - Application Load Balancer and Auto Scaling across two AZs. Web
+  tier in private subnets with no internet path at all, reached only through an
+  internet-facing ALB, with the instance security group referencing the load
+  balancer's security group rather than a CIDR.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-02
+  VpcCidr:
+    Type: String
+    Default: 10.30.0.0/16
+    Description: >-
+      A third distinct range. Lab 01 used 10.20.0.0/16 and the session VPC uses
+      10.0.0.0/16 - keeping labs on separate ranges keeps peering possible.
+  LatestAl2023Ami:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+
+  # ---------------------------------------------------------------- networking
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-vpc' }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-igw' }]
+
+  IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+
+  # The ALB needs a subnet in at least two AZs - that requirement is what makes
+  # an ALB inherently multi-AZ.
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.30.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-public-a' }]
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.30.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-public-b' }]
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.30.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-private-a' }]
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.30.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-private-b' }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-rt-public' }]
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable }
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable }
+
+  # Deliberately NO default route and NO NAT gateway. The web tier serves content
+  # generated at boot from instance metadata, so it needs no egress whatsoever.
+  # This removes $0.059/hr and an entire class of attack surface.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-rt-private' }]
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetA, RouteTableId: !Ref PrivateRouteTable }
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTable }
+
+  # ------------------------------------------------------------ security groups
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - HTTP in from anywhere
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: HTTP from internet }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-sg-alb' }]
+
+  # The ingress rule names the ALB's security group as its source, not a CIDR.
+  # The web tier is therefore reachable only through the load balancer, and the
+  # rule keeps working when instances are replaced or the subnets change.
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Web tier - HTTP in from the ALB security group only
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-sg-app' }]
+
+  AppIngressFromAlb:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AppSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref AlbSecurityGroup
+      Description: HTTP from the load balancer only
+
+  # ------------------------------------------------------------ load balancing
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${LabName}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-alb' }]
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${LabName}-tg'
+      VpcId: !Ref Vpc
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        # Default is 300s. Shortened so a terminating instance drains inside the
+        # lab window rather than sitting in `draining` for five minutes.
+        - { Key: deregistration_delay.timeout_seconds, Value: '30' }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-tg' }]
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - { Type: forward, TargetGroupArn: !Ref TargetGroup }
+
+  # ------------------------------------------------------------- the web tier
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${LabName}-lt'
+      LaunchTemplateData:
+        ImageId: !Ref LatestAl2023Ami
+        InstanceType: t3.micro
+        SecurityGroupIds: [!Ref AppSecurityGroup]
+        MetadataOptions:
+          HttpTokens: required     # IMDSv2 only
+          HttpEndpoint: enabled
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - { Key: Name, Value: !Sub '${LabName}-web' }
+              - { Key: Project, Value: saa-labs }
+        # Serves a page naming the instance and AZ that answered, using only
+        # python3 from the AMI - no package install, so no internet is needed.
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            set -eux
+            TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
+              -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+            meta() { curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+              "http://169.254.169.254/latest/meta-data/$1"; }
+            IID=$(meta instance-id)
+            AZ=$(meta placement/availability-zone)
+            IP=$(meta local-ipv4)
+            case "$AZ" in
+              *a) HUE="#1B9E77" ;;
+              *b) HUE="#2D72B8" ;;
+              *)  HUE="#8B5CF6" ;;
+            esac
+            mkdir -p /var/www
+            cat > /var/www/index.html <<HTML
+            <!doctype html><meta charset="utf-8">
+            <title>Lab 02 web tier</title>
+            <style>
+              body{margin:0;height:100vh;display:grid;place-items:center;background:#232F3E;
+                font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#fff}
+              .c{text-align:center}
+              .az{font-size:64px;font-weight:800;color:$HUE;letter-spacing:-.02em}
+              .l{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#879196;margin-bottom:10px}
+              .id{font-family:ui-monospace,monospace;font-size:20px;margin-top:18px}
+              .ip{font-family:ui-monospace,monospace;font-size:14px;color:#879196;margin-top:6px}
+              .n{margin-top:28px;font-size:13px;color:#879196;max-width:34ch;line-height:1.6}
+            </style>
+            <div class="c">
+              <div class="l">served from</div>
+              <div class="az">$AZ</div>
+              <div class="id">$IID</div>
+              <div class="ip">private address $IP</div>
+              <div class="n">Reload the page. When the availability zone changes,
+              the load balancer has sent you to the other one.</div>
+            </div>
+            HTML
+            cat > /etc/systemd/system/labweb.service <<UNIT
+            [Unit]
+            Description=Lab 02 web tier
+            After=network.target
+            [Service]
+            ExecStart=/usr/bin/python3 -m http.server 80 --directory /var/www
+            Restart=always
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+            systemctl daemon-reload
+            systemctl enable --now labweb
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: Listener
+    Properties:
+      AutoScalingGroupName: !Sub '${LabName}-asg'
+      MinSize: '2'
+      MaxSize: '4'
+      DesiredCapacity: '2'
+      VPCZoneIdentifier: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      TargetGroupARNs: [!Ref TargetGroup]
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      # ELB, not EC2. With EC2 the group only replaces instances that fail a
+      # hypervisor check; with ELB it also replaces ones failing the ALB's
+      # health check - an instance whose web server died but whose OS is fine.
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 120
+      Tags:
+        - { Key: Name, Value: !Sub '${LabName}-web', PropagateAtLaunch: true }
+        # CloudFormation stack tags do not reach instances an ASG launches, so
+        # the teardown sweep would never find them without this.
+        - { Key: Project, Value: saa-labs, PropagateAtLaunch: true }
+        - { Key: Lab, Value: 02-alb-autoscaling, PropagateAtLaunch: true }
+
+Outputs:
+  SiteUrl:
+    Description: Open this in a browser and reload it repeatedly
+    Value: !Sub 'http://${LoadBalancer.DNSName}'
+  VpcId:          { Value: !Ref Vpc }
+  PublicSubnets:  { Value: !Sub '${PublicSubnetA} (10.30.1.0/24), ${PublicSubnetB} (10.30.2.0/24)' }
+  PrivateSubnets: { Value: !Sub '${PrivateSubnetA} (10.30.11.0/24), ${PrivateSubnetB} (10.30.12.0/24)' }
+  AsgName:        { Value: !Ref AutoScalingGroup }
+  TargetGroupArn: { Value: !Ref TargetGroup }
+  LoadBalancerDns: { Value: !GetAtt LoadBalancer.DNSName }
