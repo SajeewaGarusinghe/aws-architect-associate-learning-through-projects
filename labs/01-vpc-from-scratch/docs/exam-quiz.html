@@ -1,0 +1,306 @@
+<title>VPC Exam Drill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root{
+    --bg:#F7F6F4; --surface:#FFFFFF; --surface-2:#FBFAF9;
+    --ink:#232F3E; --body:#3A4552; --muted:#6B7480; --line:#E4E2DE;
+    --accent:#C25A08; --accent-br:#FF9900; --navy:#232F3E;
+    --good:#13795B; --good-bg:#E9F6F1; --good-line:#A8DCC8;
+    --bad:#B0332A; --bad-bg:#FCECEA; --bad-line:#EFBDB6;
+    --shadow:0 1px 2px rgba(35,47,62,.06), 0 8px 24px rgba(35,47,62,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141B24; --surface:#1D2631; --surface-2:#222C38;
+      --ink:#EAEEF3; --body:#C2CBD5; --muted:#8B96A3; --line:#2F3A47;
+      --accent:#FFA92B; --accent-br:#FF9900; --navy:#0F151C;
+      --good:#3FD3A3; --good-bg:#123026; --good-line:#1E5943;
+      --bad:#F58374; --bad-bg:#321A18; --bad-line:#6B2C25;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141B24; --surface:#1D2631; --surface-2:#222C38;
+    --ink:#EAEEF3; --body:#C2CBD5; --muted:#8B96A3; --line:#2F3A47;
+    --accent:#FFA92B; --accent-br:#FF9900; --navy:#0F151C;
+    --good:#3FD3A3; --good-bg:#123026; --good-line:#1E5943;
+    --bad:#F58374; --bad-bg:#321A18; --bad-line:#6B2C25;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--body);margin:0;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.6;}
+  .wrap{max-width:720px;margin:0 auto;padding-block:0 56px;padding-left:16px;padding-right:16px;}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.88em;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink);}
+
+  header{background:var(--navy);margin:0 -16px 28px;padding:30px 16px 26px;position:relative;overflow:hidden;}
+  header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--accent-br);}
+  header::before{content:"";position:absolute;right:-100px;top:-130px;width:360px;height:360px;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,153,0,.15),transparent 68%);}
+  .eyebrow{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-br);font-weight:600;margin-bottom:10px;}
+  header h1{margin:0 0 6px;font-size:26px;font-weight:800;letter-spacing:-.015em;color:#fff;text-wrap:balance;}
+  header p{margin:0;color:#A8B2BD;font-size:14px;max-width:52ch;}
+
+  .bar{display:flex;align-items:center;gap:14px;margin-top:20px;position:relative;}
+  .track{flex:1;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden;}
+  .fill{height:100%;width:0;background:var(--accent-br);border-radius:3px;transition:width .35s ease;}
+  .tally{font-size:12px;color:#A8B2BD;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500;}
+  .tally b{color:#fff;font-weight:700;}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;box-shadow:var(--shadow);}
+  .qnum{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:10px;}
+  .qtext{font-size:17px;color:var(--ink);font-weight:500;margin:0 0 18px;line-height:1.5;text-wrap:pretty;}
+
+  .opts{display:flex;flex-direction:column;gap:8px;}
+  .opt{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;
+    background:var(--surface-2);border:1.5px solid var(--line);border-radius:9px;padding:12px 14px;
+    font:inherit;font-size:14.5px;color:var(--body);cursor:pointer;transition:border-color .15s,background .15s;}
+  .opt:hover:not(:disabled){border-color:var(--accent);}
+  .opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .opt:disabled{cursor:default;}
+  .opt .key{flex:none;width:22px;height:22px;border-radius:5px;background:var(--line);color:var(--ink);
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+  .opt.right{background:var(--good-bg);border-color:var(--good-line);}
+  .opt.right .key{background:var(--good);color:#fff;}
+  .opt.wrong{background:var(--bad-bg);border-color:var(--bad-line);}
+  .opt.wrong .key{background:var(--bad);color:#fff;}
+
+  .why{margin-top:16px;border-left:3px solid var(--accent-br);background:var(--surface-2);
+    border-radius:0 8px 8px 0;padding:13px 16px;font-size:14px;color:var(--body);}
+  .why .vl{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:5px;}
+  .why.ok .vl{color:var(--good);}
+  .why.no .vl{color:var(--bad);}
+  .why strong{color:var(--ink);font-weight:600;}
+
+  .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
+  .btn{font:inherit;font-size:14px;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;
+    border:1.5px solid transparent;background:var(--navy);color:#fff;transition:opacity .15s;}
+  .btn:hover{opacity:.88;}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--body);}
+
+  .done{text-align:center;padding:14px 0 4px;}
+  .score{font-size:52px;font-weight:800;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
+  .score span{color:var(--muted);font-size:24px;font-weight:600;}
+  .verdict{font-size:15px;color:var(--body);margin:12px auto 0;max-width:46ch;}
+  .missed{margin-top:22px;text-align:left;}
+  .missed h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px;font-weight:700;}
+  .missed li{font-size:14px;margin-bottom:7px;color:var(--body);}
+  .missed li::marker{color:var(--bad);}
+
+  footer{margin-top:26px;font-size:12.5px;color:var(--muted);text-align:center;}
+  footer a{color:var(--accent);}
+
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;}}
+  @media (max-width:480px){ header h1{font-size:22px;} .qtext{font-size:16px;} .card{padding:18px;} }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SAA-C03 · Lab 01</div>
+    <h1>VPC Exam Drill</h1>
+    <p>Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.</p>
+    <div class="bar">
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <div class="tally" id="tally"><b>0</b>/12 correct</div>
+    </div>
+  </header>
+
+  <div id="stage"></div>
+
+  <footer>Drawn from <strong>Lab 01 — VPC from scratch</strong>. Reference notes: <code>exam-notes.md</code></footer>
+</div>
+
+<script>
+const Q = [
+ {q:"An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+  o:["The instance needs an Elastic IP instead of an auto-assigned public IP",
+     "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
+     "The instance needs a NAT gateway to reach the internet",
+     "DNS hostnames are disabled on the VPC"],
+  a:1,
+  w:"A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> — that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."},
+
+ {q:"Instances in a private subnet cannot complete outbound HTTPS requests — connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+  o:["Add an inbound rule for TCP 443 to the security group",
+     "Add an inbound network ACL rule allowing TCP 1024–65535 from <code>0.0.0.0/0</code>",
+     "Add an outbound rule for ephemeral ports to the security group",
+     "Replace the custom network ACL with the default network ACL"],
+  a:1,
+  w:"Network ACLs are <strong>stateless</strong> — each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024–65535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."},
+
+ {q:"Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+  o:["Create an interface endpoint for S3",
+     "Create a gateway endpoint for S3",
+     "Move the instances to a public subnet",
+     "Add a second NAT gateway to spread the load"],
+  a:1,
+  w:"Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."},
+
+ {q:"A security policy forbids any internet path from a private subnet — no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+  o:["<code>ssm</code> only",
+     "<code>ssm</code> and <code>ec2</code>",
+     "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
+     "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"],
+  a:2,
+  w:"All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."},
+
+ {q:"One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
+  o:["They continue normally; NAT gateways are regional",
+     "They lose outbound internet connectivity",
+     "They automatically fail over to an internet gateway",
+     "They lose all connectivity, including to other subnets in the VPC"],
+  a:1,
+  w:"A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it — and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."},
+
+ {q:"How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+  o:["256","254","251","250"],
+  a:2,
+  w:"A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 — the on-premises networking answer."},
+
+ {q:"Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
+  o:["It succeeds; the more specific route wins",
+     "It succeeds, but only one direction works",
+     "It fails — peered VPCs cannot have overlapping CIDR blocks",
+     "It succeeds if a transit gateway is used instead"],
+  a:2,
+  w:"Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build — it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."},
+
+ {q:"Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
+  o:["A NAT gateway",
+     "An egress-only internet gateway",
+     "An internet gateway with a restrictive network ACL",
+     "A NAT instance with source/destination checking disabled"],
+  a:1,
+  w:"An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."},
+
+ {q:"A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+  o:["Rejected inbound SSH attempts",
+     "Traffic between two instances in different subnets of the same VPC",
+     "Requests to the instance metadata service at <code>169.254.169.254</code>",
+     "Outbound HTTPS traffic to the internet through a NAT gateway"],
+  a:2,
+  w:"Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic — the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."},
+
+ {q:"A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
+  o:["A security group inbound deny rule",
+     "A network ACL inbound deny rule",
+     "A security group with the IP removed from the allow list",
+     "An egress-only internet gateway"],
+  a:1,
+  w:"Security groups support <strong>allow rules only</strong> — there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."},
+
+ {q:"A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+  o:["A NAT gateway","A NAT instance","An egress-only internet gateway","An internet gateway"],
+  a:1,
+  w:"A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither — only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."},
+
+ {q:"A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+  o:["NAT gateways bill per connection, and idle connections still count",
+     "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
+     "The Elastic IP is billed at a premium when attached to a NAT gateway",
+     "NAT gateways bill a minimum of 1 TB of data processing per month"],
+  a:1,
+  w:"A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> — about <strong>$43/month idle</strong> — plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."}
+];
+
+const KEYS = ["A","B","C","D"];
+const stage = document.getElementById("stage");
+const fill = document.getElementById("fill");
+const tally = document.getElementById("tally");
+let i = 0, score = 0, missed = [];
+
+function progress(){
+  fill.style.width = (i / Q.length * 100) + "%";
+  tally.innerHTML = "<b>" + score + "</b>/" + Q.length + " correct";
+}
+
+function render(){
+  if (i >= Q.length) return finish();
+  const item = Q[i];
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML =
+    '<div class="qnum">Question ' + (i+1) + ' of ' + Q.length + '</div>' +
+    '<p class="qtext">' + item.q + '</p>' +
+    '<div class="opts"></div>';
+  const box = card.querySelector(".opts");
+
+  item.o.forEach((text, n) => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    b.id = "q" + i + "opt" + n;
+    b.innerHTML = '<span class="key">' + KEYS[n] + '</span><span>' + text + '</span>';
+    b.addEventListener("click", () => choose(card, box, n));
+    box.appendChild(b);
+  });
+
+  stage.replaceChildren(card);
+  progress();
+}
+
+function choose(card, box, picked){
+  const item = Q[i];
+  const correct = picked === item.a;
+  if (correct) score++; else missed.push(i);
+
+  [...box.children].forEach((b, n) => {
+    b.disabled = true;
+    if (n === item.a) b.classList.add("right");
+    else if (n === picked) b.classList.add("wrong");
+  });
+
+  const why = document.createElement("div");
+  why.className = "why " + (correct ? "ok" : "no");
+  why.innerHTML = '<span class="vl">' +
+    (correct ? "Correct — " + KEYS[item.a] : "Not quite — the answer is " + KEYS[item.a]) +
+    '</span>' + item.w;
+  card.appendChild(why);
+
+  const acts = document.createElement("div");
+  acts.className = "actions";
+  const next = document.createElement("button");
+  next.className = "btn";
+  next.textContent = i === Q.length - 1 ? "See results" : "Next question";
+  next.addEventListener("click", () => { i++; render(); });
+  acts.appendChild(next);
+  card.appendChild(acts);
+  next.focus();
+  progress();
+}
+
+function finish(){
+  fill.style.width = "100%";
+  const pct = Math.round(score / Q.length * 100);
+  const verdict = pct >= 85 ? "Comfortably above the ~72% needed to pass. This domain is solid."
+    : pct >= 72 ? "Around passing standard. Re-read the ones you missed — the margin is thin."
+    : pct >= 50 ? "The concepts are landing but the details are not yet reliable. Worth a second pass."
+    : "Worth rebuilding the lab and working through the console tour before drilling again.";
+
+  const card = document.createElement("div");
+  card.className = "card done";
+  let html = '<div class="score">' + pct + '<span>%</span></div>' +
+    '<p class="verdict"><strong>' + score + ' of ' + Q.length + ' correct.</strong> ' + verdict + '</p>';
+
+  if (missed.length){
+    html += '<div class="missed"><h3>Review these</h3><ul>' +
+      missed.map(n => '<li>Q' + (n+1) + ' — ' + Q[n].q.replace(/<[^>]+>/g, "").slice(0, 95) + '…</li>').join("") +
+      '</ul></div>';
+  }
+  html += '<div class="actions" style="justify-content:center"><button class="btn ghost" id="again">Run it again</button></div>';
+  card.innerHTML = html;
+  stage.replaceChildren(card);
+  document.getElementById("again").addEventListener("click", () => {
+    i = 0; score = 0; missed = []; render();
+  });
+  tally.innerHTML = "<b>" + score + "</b>/" + Q.length + " correct";
+}
+
+render();
+</script>
