@@ -1,0 +1,442 @@
+Create a printable AWS (or general cloud) architecture document as a single self-contained HTML page, centered on clean hand-drawn SVG architecture diagrams in a navy-and-amber "console" house style. Use when the user asks for an architecture write-up, reference architecture, solution design doc, HLD/LLD, design review packet, well-architected review, or any document whose centerpiece is a cloud topology diagram (VPC / multi-AZ / subnets / managed services) with supporting component, data-flow, decision, and non-functional sections. Produces a paginated (Letter/A4) print-ready doc; recolorable per brand.
+
+---
+name: aws-architecture-doc
+description: >-
+  Create a printable AWS (or general cloud) architecture document as a single
+  self-contained HTML page, centered on clean hand-drawn SVG architecture
+  diagrams in a navy-and-amber "console" house style. Use when the user asks for
+  an architecture write-up, reference architecture, solution design doc, HLD/LLD,
+  design review packet, well-architected review, or any document whose centerpiece
+  is a cloud topology diagram (VPC / multi-AZ / subnets / managed services) with
+  supporting component, data-flow, decision, and non-functional sections. Produces
+  a paginated (Letter/A4) print-ready doc; recolorable per brand.
+license: MIT
+---
+ 
+# AWS Architecture Document
+ 
+Build a printable **architecture document** whose centerpiece is a clean,
+consistent cloud topology diagram, wrapped in a disciplined write-up: context,
+components, data flow, key decisions, and the non-functional story (security,
+scaling, reliability, cost). The house style is a navy + amber "console" look.
+ 
+The recipe is cloud-agnostic in structure — it defaults to AWS vocabulary
+(Region / VPC / AZ / public+private subnets / managed services) but recolors and
+relabels for GCP, Azure, or on-prem. Everything is self-contained: **`shell.html`**
+(beside this file) is a complete standalone HTML page carrying the whole `<style>`
+block and the SVG diagram markers.
+ 
+> This is a **print document** — a paginated (Letter/A4) HTML page that prints or
+> saves to PDF directly. No framework or design-system dependency; the only
+> external references are two Google fonts.
+ 
+---
+ 
+## 1. Shell — a complete standalone HTML page
+ 
+- One `.html` file. `shell.html` IS the starting point: copy it whole, then
+  replace the demo content inside `<div class="sheet">`.
+- Self-contained: a `.sheet` page frame plus an `@page` rule give paginated
+  Letter output with no component library.
+- Fonts: **Inter** (400–800) + **JetBrains Mono** (400–600), the only external refs.
+- The complete `<style>` block and the `<svg><defs>` arrow markers are already in
+  `shell.html`. Keep the classes; change the content.
+## 2. Palette — `:root` tokens (recolor per brand, keep the structure)
+ 
+```
+--ink #232F3E   (navy — cover, dividers, dark tiles, headings)
+--orange #FF9900 / --orange-d #EC7211   (the single accent: rules, numbers, links)
+--slate #37475A  --gray #545B64  --gray-l #879196
+--wash #FAFAFA   --line #E3E7EB   (surfaces & hairlines)
+--blue #2D72B8   --grn #1B9E77   --purple #8B5CF6   (diagram tiers)
+```
+ 
+- **One dark ground + one accent is the whole identity.** Accent is a line
+  (numbers, rules, links, one border-left), never a flood. Cover/dividers are the
+  dark ground with a soft accent radial glow and an accent edge bar.
+- Contrast from tone, not saturation. White / `--wash` surfaces, `--line`
+  hairlines, no pure black, no heavy shadows.
+- Body ~10.2–11pt / `line-height 1.6`. Sub-labels 9pt uppercase accent + fading rule.
+## 3. Document skeleton
+ 
+Architecture docs are diagram-led. Keep the prose tight around the picture:
+ 
+1. **Cover** (`.cover`) — eyebrow "Architecture Overview", `<h1>` system name,
+   `.sub` one-line goal, `.meta` headline facts (AZ count, target throughput, p99).
+2. **Overview** `<p>` + `.callout.tip` — scope, assumptions, what's out of scope.
+3. **Contents** (`.toc`) — only for multi-section / multi-service docs.
+4. One or more **architecture sections** (`.p`), each in the anatomy below.
+5. **Closing** — decisions log / open questions / cost summary table.
+## 4. Section anatomy (`.p`) — the diagram is the centerpiece
+ 
+Order is fixed; omit what doesn't apply, never reorder:
+ 
+1. `.head-row` — `<h2 class="sec">` section kicker + `↑ Contents` back-link.
+2. `.p-h` — `<span class="num">Nn.</span>` + title.
+3. `.lede` — "In one line" boxed summary of the architectural idea.
+4. `.sub-lbl` **Context & requirements** → `.reqs` 3-col grid
+   (Functional / Non-functional / Scale & constraints).
+5. `.sub-lbl` **High-level design** → `.svc` component map (colored `.dot` +
+   service name + role, each ending in a bold **Why:**). This names every node
+   that appears in the diagram.
+6. **`figure.dg` — the architecture diagram (§5).** The centerpiece; give it room.
+7. `.sub-lbl` **Data flow** → numbered request/response walk-through keyed to the
+   diagram's edges (1 → 2 → 3 …).
+8. `.sub-lbl` **Key decisions** → `.why` trade-off tables (`.opt.no` ✗ rejected /
+   `.opt.yes` ✓ chosen) + `.callout.key` for the pivotal concept.
+9. `.sub-lbl` **Security · scaling · reliability · cost** → `.svc` list, one row
+   each: data protection, scaling strategy, failure modes + blast radius, cost levers.
+10. `.spine` — **operational notes**: dark-header block with a `.tl` timeline
+    (e.g. Deploy / Observe / Fail over), a `.three` "watch these three things"
+    list, and a `.flag` "red flag — don't" anti-pattern.
+Callouts: `.callout.key` (blue), `.callout.tip` (accent), `.callout.warn` (red).
+ 
+## 5. The architecture diagram — one visual language
+ 
+This is the reason the doc exists. Hand-author inline `<svg>` in `figure.dg` with
+a `<figcaption class="cap">` (bold **Fig Nn** + one-line read). Hold the language
+identical across every figure.
+ 
+- **Draw real cloud topology.** Nest dashed grouping frames: `.region` → `.vpc`
+  → `.az` (repeat for multi-AZ) → `.sub-pub` (green public subnet) / `.sub-priv`
+  (blue private subnet) / `.zbox`. Label each with `.zone-lbl`. Show the actual
+  placement — load balancer in public subnets, compute + data in private, managed
+  services outside the VPC reached via endpoints.
+- **Tile colour = tier** (define once in a `.blocks` legend, reuse everywhere):
+  `.tile-g` edge/entry (CDN, WAF, ALB), `.tile` (dark) compute, `.tile-p` async
+  (queues, streams, workers), `.tile-b` data stores, `.tile-o` client/highlight,
+  `.tile-w` external/managed (white w/ stroke).
+- **Line style = flow:** `.ln` sync request (grey), `.ln-o` primary path (accent),
+  `.ln-async` (dashed) async/event. Arrow markers `#arrow` / `#arrow-o` / `#arrow-a`.
+- **Text:** `.t-lbl`/`.t-lbli` tile labels, `.t-sub` sub-labels, `.flow`/`.flow-a`
+  edge annotations.
+- **Annotate flows with real values** — throughput (`~4,000 rd/s`), latency
+  (`p99 < 50 ms`, `single-digit ms`), protocol (`HTTPS · presigned`), correctness/
+  availability cues (`Multi-AZ`, `≈99% cache hits`, `no oversell`). Place them in
+  empty zones; never overlap tiles. The numbers should match the `.meta` and
+  `.reqs` figures elsewhere in the section.
+- Keep one topology per figure. If a system has distinct sync and async paths (or
+  read vs write), it's fine to show both in one diagram using the line styles, or
+  split into two figures — but never mix two unrelated systems in one frame.
+## 6. Content rules
+ 
+- Real, defensible AWS specifics: correct service names, plausible capacity math,
+  honest trade-offs (why the rejected option is worse). No filler, no invented
+  numbers that don't derive from stated scale.
+- Every node in the diagram must appear in the `.svc` component map, and vice
+  versa — the picture and the prose describe the same system.
+- `break-inside:avoid` is on every block so figures/tables don't split across
+  pages; `.part` dividers use `break-before:page`.
+## 7. Workflow
+ 
+1. Clarify what's missing: system/workload, scale targets, cloud + regions,
+   compliance constraints, brand colors (or keep navy/amber), single-service vs
+   multi-section.
+2. Copy `shell.html` to a new `.html` file; recolor `:root` if rebranding.
+3. Draft the component map first, then draw the diagram so every node has a home,
+   then write the flow / decisions / non-functional sections around it.
+4. Print-ready as-is: browser Print → Save as PDF produces the paginated document.
+## Files in this skill
+ 
+- `SKILL.md` — this recipe.
+- `shell.html` — the complete standalone starting page (all CSS + diagram markers,
+  with a scaffolded architecture section). Copy it and fill in the content.
+ 
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS Architecture Document — shell</title>
+ 
+<!-- ============================================================
+  AWS Architecture Document — reusable standalone shell.
+  A COMPLETE, self-contained HTML page. Copy it whole, then replace
+  the demo content in <div class="sheet"> with your architecture
+  write-up (see SKILL.md for the anatomy). Recolor via the :root tokens.
+  Only external deps are the two Google fonts; everything else is inline,
+  so the file prints and works offline as-is.
+============================================================ -->
+ 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+ 
+<style>
+  /* ---- page frame: standalone paginated sheet, no external starter ---- */
+  html,body{margin:0;padding:0;}
+  body{background:#5a5f66;}
+  .sheet{width:8.5in;min-height:11in;margin:24px auto;padding:0.7in;background:#fff;
+    box-shadow:0 2px 18px rgba(0,0,0,.35);box-sizing:border-box;}
+  @page{size:letter;margin:0.7in;}
+  @media print{
+    body{background:#fff;}
+    .sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;}
+  }
+</style>
+<style> + <defs> into a doc-page DC.
+  Recolor by editing the :root tokens (--ink dark ground, --orange* accent).
+  Self-contained: no external CSS, no dependencies beyond the two web fonts.
+============================================================ -->
+ 
+<!-- 1) In <helmet>, load the fonts and this style block: -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  doc-page:not(:defined){visibility:hidden}
+  :root{
+    --ink:#232F3E; --slate:#37475A; --orange:#FF9900; --orange-d:#EC7211;
+    --gray:#545B64; --gray-l:#879196; --paper:#FFFFFF; --wash:#FAFAFA;
+    --line:#E3E7EB; --pub:#1B9E77; --priv:#2D72B8; --blue:#2D72B8; --purple:#8B5CF6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#5a5f66;color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  doc-page{font-size:11pt;line-height:1.6;color:#1c2430;}
+  a{color:var(--orange-d);text-decoration:none;}
+  a:hover{text-decoration:underline;color:var(--orange);}
+  p{margin:0 0 10px;}
+  strong{font-weight:600;color:var(--ink);}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.2pt;background:#EEF1F4;border:1px solid #E0E5EA;border-radius:4px;padding:1px 5px;color:#2a3542;}
+ 
+  /* running footer */
+  .pg-foot{display:flex;justify-content:space-between;align-items:center;font-size:8pt;color:var(--gray-l);border-top:1px solid var(--line);padding-top:5px;letter-spacing:.02em;}
+  .pg-foot b{color:var(--orange-d);font-weight:700;}
+ 
+  /* cover */
+  .cover{background:var(--ink);color:#fff;margin:-0.7in -0.7in 26px;padding:66px 0.7in 48px;position:relative;overflow:hidden;}
+  .cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--orange);}
+  .cover::before{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.16),transparent 68%);}
+  .cover .eyebrow{font-size:11pt;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:18px;}
+  .cover h1{font-size:33pt;line-height:1.08;margin:0 0 14px;font-weight:800;letter-spacing:-.015em;max-width:16em;}
+  .cover .sub{font-size:12.5pt;color:#c7ced6;max-width:34em;line-height:1.55;}
+  .cover .meta{margin-top:28px;display:flex;gap:30px;flex-wrap:wrap;font-size:9.5pt;color:#9aa5b1;}
+  .cover .meta b{color:#fff;font-weight:700;display:block;font-size:16pt;margin-bottom:2px;}
+ 
+  h2.sec{font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-d);font-weight:700;margin:0 0 4px;}
+  .p-h{font-size:16pt;font-weight:800;color:var(--ink);margin:0 0 6px;line-height:1.22;letter-spacing:-.01em;}
+  .p-h .num{color:var(--orange-d);}
+  .head-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;}
+  .head-row a{font-size:9pt;white-space:nowrap;}
+ 
+  /* chapter / part divider */
+  .part{break-before:page;background:var(--ink);color:#fff;margin:0 -0.7in 26px;padding:40px 0.7in;position:relative;overflow:hidden;}
+  .part::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--orange);}
+  .part::after{content:"";position:absolute;right:-90px;bottom:-90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.14),transparent 70%);}
+  .part .dk{font-size:10pt;letter-spacing:.2em;text-transform:uppercase;color:var(--orange);font-weight:600;}
+  .part h2{font-size:24pt;font-weight:800;margin:6px 0 6px;letter-spacing:-.01em;}
+  .part p{color:#b8c0c9;font-size:10.5pt;margin:0;max-width:46em;line-height:1.55;}
+ 
+  /* TOC */
+  .toc h2{font-size:17pt;font-weight:800;color:var(--ink);margin:0 0 4px;}
+  .toc .lead{color:var(--gray);font-size:10.5pt;margin-bottom:20px;max-width:40em;}
+  .toc-grp{margin-bottom:15px;break-inside:avoid;}
+  .toc-grp .lbl{font-size:8.5pt;letter-spacing:.14em;text-transform:uppercase;color:var(--orange-d);font-weight:700;border-bottom:1.5px solid var(--line);padding-bottom:4px;margin-bottom:7px;}
+  .toc-row{display:flex;align-items:baseline;gap:8px;font-size:10pt;padding:2.5px 0;}
+  .toc-row .qn{color:var(--orange-d);font-weight:700;font-variant-numeric:tabular-nums;min-width:30px;}
+  .toc-row .dots{flex:1;border-bottom:1px dotted #c4ccd4;transform:translateY(-3px);}
+  .toc-row a{color:#26313f;}
+  .toc-row.soon .qn{color:var(--gray-l);}
+  .toc-row.soon span.t{color:var(--gray-l);}
+  .toc-row .badge{font-size:7pt;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--gray);background:#EDF0F3;border:1px solid var(--line);border-radius:3px;padding:1px 5px;}
+ 
+  /* section sub-label */
+  .sub-lbl{display:flex;align-items:center;gap:9px;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--orange-d);margin:16px 0 9px;}
+  .sub-lbl::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,var(--orange) 0%,var(--line) 100%);}
+  .sub-lbl .n{font-family:'JetBrains Mono',monospace;color:var(--gray-l);font-weight:600;font-size:8.5pt;}
+ 
+  .p{margin-bottom:26px;}
+  .lede{background:var(--wash);border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:6px;padding:14px 18px;margin-bottom:6px;break-inside:avoid;}
+  .lede .tag{display:inline-block;font-size:8pt;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--slate);padding:2px 8px;border-radius:3px;margin-bottom:9px;}
+  .lede p{margin:0;font-size:10.5pt;color:#2a3542;}
+ 
+  /* requirements grid */
+  .reqs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;break-inside:avoid;}
+  .reqs .col{border:1px solid var(--line);border-radius:6px;padding:10px 13px;background:#fff;}
+  .reqs .col h4{margin:0 0 6px;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:5px;}
+  .reqs ul{margin:0;padding-left:15px;font-size:9.5pt;color:#33404d;line-height:1.5;}
+  .reqs li{margin-bottom:4px;}
+  .reqs li::marker{color:var(--orange);}
+ 
+  /* stat block */
+  .stats{display:flex;gap:9px;flex-wrap:wrap;margin:4px 0 6px;break-inside:avoid;}
+  .stat{flex:1;min-width:110px;border:1px solid var(--line);border-left:3px solid var(--orange);border-radius:6px;padding:9px 12px;background:var(--wash);}
+  .stat .v{font-size:14.5pt;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1;}
+  .stat .v small{font-size:9pt;font-weight:600;color:var(--gray);}
+  .stat .k{font-size:8pt;letter-spacing:.05em;text-transform:uppercase;color:var(--gray);margin-top:4px;font-weight:600;}
+  .stat .n{font-size:8.4pt;color:var(--gray-l);margin-top:3px;line-height:1.35;}
+ 
+  /* service map list */
+  .svc{margin:6px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .svc .r{display:flex;gap:0;border-top:1px solid var(--line);font-size:9.7pt;}
+  .svc .r:first-child{border-top:none;}
+  .svc .name{flex:0 0 30%;padding:9px 13px;font-weight:700;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:center;gap:7px;}
+  .svc .name .dot{width:8px;height:8px;border-radius:2px;flex:none;}
+  .svc .role{flex:1;padding:9px 13px;color:#3a4552;}
+  .svc .role b{color:var(--ink);}
+ 
+  /* callouts */
+  .callout{border-radius:6px;padding:11px 14px 11px 40px;margin:12px 0;font-size:9.8pt;line-height:1.5;position:relative;break-inside:avoid;}
+  .callout .ct{font-weight:700;display:block;margin-bottom:2px;font-size:9pt;letter-spacing:.03em;}
+  .callout .ico{position:absolute;left:12px;top:12px;width:18px;height:18px;}
+  .callout.key{background:#F0F6FC;border:1px solid #CFE2F3;color:#1c3a52;}
+  .callout.key .ct{color:#1f6feb;}
+  .callout.tip{background:#FFF4E0;border:1px solid #FBD79A;color:#5a3d0a;}
+  .callout.tip .ct{color:var(--orange-d);}
+  .callout.warn{background:#FDECEC;border:1px solid #F5C2C2;color:#6b1d1d;}
+  .callout.warn .ct{color:#C0392B;}
+ 
+  .xref{font-size:9.5pt;color:var(--slate);background:#EEF1F4;border:1px dashed #C2CBD4;border-radius:5px;padding:8px 12px;margin:10px 0;display:flex;gap:8px;align-items:baseline;break-inside:avoid;}
+  .xref b{color:var(--orange-d);}
+  .xref::before{content:"→";color:var(--orange-d);font-weight:800;}
+ 
+  /* trade-off table */
+  .why{margin:12px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .why .row{display:flex;gap:0;border-top:1px solid var(--line);font-size:9.6pt;}
+  .why .row:first-child{border-top:none;}
+  .why .opt{flex:0 0 34%;padding:8px 12px;font-weight:600;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);}
+  .why .rea{flex:1;padding:8px 12px;color:#3a4552;}
+  .why .opt.no::before{content:"\2717  ";color:#C0392B;font-weight:800;}
+  .why .opt.yes{background:#EAF7F1;}
+  .why .opt.yes::before{content:"\2713  ";color:#1B9E77;font-weight:800;}
+ 
+  /* interview spine */
+  .spine{border:1px solid var(--line);border-radius:7px;margin:16px 0 4px;overflow:hidden;break-inside:avoid;background:#fff;box-shadow:0 1px 2px rgba(35,47,62,.05);}
+  .spine .hd{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:8px 15px;font-size:8.6pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;}
+  .spine .hd svg{width:15px;height:15px;fill:var(--orange);flex:none;}
+  .spine .hd .clk{margin-left:auto;font-family:'JetBrains Mono',monospace;letter-spacing:.01em;font-weight:600;color:var(--orange);text-transform:none;font-size:8.6pt;}
+  .spine .bd{padding:11px 15px 13px;}
+  .spine .tl{margin-bottom:11px;}
+  .spine .ph{display:flex;gap:12px;padding:6px 0;border-top:1px dashed var(--line);}
+  .spine .ph:first-child{border-top:none;padding-top:0;}
+  .spine .ph .mn{flex:0 0 60px;font-size:7.8pt;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--orange-d);padding-top:2px;}
+  .spine .ph .tx{flex:1;font-size:9.6pt;color:#33404d;line-height:1.5;}
+  .spine .ph .tx b{color:var(--ink);font-weight:600;}
+  .spine .three{background:var(--wash);border:1px solid var(--line);border-radius:5px;padding:9px 13px;margin-bottom:9px;}
+  .spine .three .lb,.spine .flag .lb{font-size:7.6pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:5px;display:block;}
+  .spine .three ol{margin:0;padding-left:16px;font-size:9.4pt;color:#2a3542;line-height:1.5;}
+  .spine .three li{margin-bottom:2px;}
+  .spine .three li::marker{color:var(--orange-d);font-weight:700;}
+  .spine .flag{font-size:9.3pt;line-height:1.45;color:#6b1d1d;background:#FDECEC;border:1px solid #F5C2C2;border-radius:5px;padding:8px 12px;}
+  .spine .flag .lb{color:#C0392B;}
+  .spine .flag b{color:#8f2a20;font-weight:600;}
+ 
+  /* figure / diagram */
+  figure.dg{margin:16px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;break-inside:avoid;background:#fff;}
+  figure.dg .cap{background:var(--wash);border-top:1px solid var(--line);padding:7px 14px;font-size:8.8pt;color:var(--gray);}
+  figure.dg .cap b{color:var(--orange-d);font-weight:700;}
+  figure.dg svg{display:block;width:100%;height:auto;}
+ 
+  /* SVG diagram language */
+  .d-bg{fill:#fff;}
+  .vpc{fill:#F5F8FB;stroke:#2D72B8;stroke-width:1.5;stroke-dasharray:6 4;}
+  .region{fill:none;stroke:#545B64;stroke-width:1.4;stroke-dasharray:2 3;}
+  .az{fill:#FBFDFF;stroke:#879196;stroke-width:1;stroke-dasharray:4 3;}
+  .zbox{fill:#FAFBFC;stroke:#C7D0D8;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-pub{fill:#EAF7F1;stroke:#1B9E77;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-priv{fill:#EEF4FB;stroke:#2D72B8;stroke-width:1;stroke-dasharray:4 3;}
+  .tile{fill:#232F3E;}
+  .tile-o{fill:#FF9900;}
+  .tile-b{fill:#2D72B8;}
+  .tile-g{fill:#545B64;}
+  .tile-p{fill:#8B5CF6;}
+  .tile-grn{fill:#1B9E77;}
+  .tile-w{fill:#fff;stroke:#232F3E;stroke-width:1.3;}
+  .t-lbl{font:600 11px 'Inter',sans-serif;fill:#fff;text-anchor:middle;}
+  .t-lbli{font:600 11px 'Inter',sans-serif;fill:#232F3E;text-anchor:middle;}
+  .t-sub{font:500 8.5px 'Inter',sans-serif;fill:#fff;opacity:.8;text-anchor:middle;}
+  .zone-lbl{font:700 9px 'Inter',sans-serif;letter-spacing:.07em;}
+  .flow{font:500 8.5px 'Inter',sans-serif;fill:#545B64;}
+  .flow-a{font:500 8.5px 'Inter',sans-serif;fill:#8B5CF6;}
+  .ln{stroke:#545B64;stroke-width:1.6;fill:none;}
+  .ln-o{stroke:#FF9900;stroke-width:2;fill:none;}
+  .ln-async{stroke:#8B5CF6;stroke-width:1.6;fill:none;stroke-dasharray:6 4;}
+  .legend-sw{width:22px;height:0;}
+ 
+  /* framework method */
+  .method{counter-reset:step;margin:6px 0;}
+  .method .step{display:flex;gap:13px;padding:10px 0;border-top:1px solid var(--line);break-inside:avoid;}
+  .method .step:first-child{border-top:none;}
+  .method .step .idx{flex:none;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--orange);font-weight:800;font-size:11pt;display:flex;align-items:center;justify-content:center;}
+  .method .step .bd{flex:1;}
+  .method .step h4{margin:2px 0 3px;font-size:11pt;color:var(--ink);font-weight:700;}
+  .method .step p{margin:0;font-size:9.8pt;color:#3a4552;}
+ 
+  /* building blocks */
+  .blocks{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:8px 0;}
+  .block{border:1px solid var(--line);border-radius:6px;padding:11px 13px;background:#fff;break-inside:avoid;}
+  .block h4{margin:0 0 7px;font-size:8.4pt;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#fff;display:inline-block;padding:2px 8px;border-radius:3px;}
+  .block .items{font-size:9.4pt;color:#33404d;line-height:1.55;}
+  .block .items b{color:var(--ink);}
+ 
+  .legend{display:flex;flex-wrap:wrap;gap:16px 26px;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:8px 0;font-size:9.4pt;}
+  .legend .grp{min-width:150px;}
+  .legend .grp .h{font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--gray);font-weight:700;margin-bottom:7px;}
+  .legend .it{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:#33404d;}
+  .legend .chip{width:26px;height:15px;border-radius:3px;flex:none;}
+  .legend svg{flex:none;}
+</style>
+</head>
+<body>
+ 
+<!-- arrow markers used by every figure.dg diagram -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#545B64"/></marker>
+  <marker id="arrow-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FF9900"/></marker>
+  <marker id="arrow-a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8B5CF6"/></marker>
+</defs></svg>
+ 
+<div class="sheet">
+  <!-- ARCHITECTURE DOC STRUCTURE (full detail in SKILL.md):
+       .cover  →  Overview + .callout.tip  →  .toc (optional for long docs)
+       →  one .p section per architecture concern:
+          Context & requirements · Architecture (the big figure.dg) ·
+          Component responsibilities (.svc) · Data flow (numbered) ·
+          Key decisions (.why trade-off table) · Security / scaling / cost /
+          reliability (.svc) · Operational notes (.spine). -->
+ 
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>System / Workload Name</h1>
+    <div class="sub">One sentence on what this system does and the primary architectural goal (e.g. low-latency reads at global scale).</div>
+    <div class="meta">
+      <div><b>3</b>AZ</div>
+      <div><b>~4k</b>req/s</div>
+      <div><b>p99 50ms</b>target</div>
+    </div>
+  </div>
+ 
+  <div class="p" id="arch">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2><a href="#toc">↑ Contents</a></div>
+    <div class="p-h"><span class="num">01.</span> The architecture</div>
+    <div class="lede"><span class="tag">In one line</span><p>The core shape of the system — the one architectural idea a reader should leave with.</p></div>
+ 
+    <div class="sub-lbl">High-level design</div>
+    <!-- .svc component map: colored .dot + name + role, each ending in a bold Why: -->
+ 
+    <!-- THE DIAGRAM — the centerpiece. Draw region → VPC → multi-AZ → public/private
+         subnets, tiles colored by tier, lines by flow, annotated with real numbers. -->
+    <figure class="dg">
+      <svg viewBox="0 0 760 340" role="img" aria-label="Reference architecture diagram">
+        <!-- region / vpc / az / subnet frames, .tile* nodes, .ln* edges, .flow labels -->
+        <rect class="region" x="8" y="8" width="744" height="324" rx="8"/>
+        <text class="zone-lbl" x="20" y="26">Region · us-east-1</text>
+        <!-- …compose the topology here… -->
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — One-sentence description of what the diagram shows.</figcaption>
+    </figure>
+ 
+    <!-- .sub-lbl Deep dive → prose + .why trade-off table + .callout key concept -->
+    <!-- .sub-lbl Security · scaling · failure · cost → .svc list -->
+    <!-- .spine operational / review notes -->
+  </div>
+ 
+</div>
+</body>
+</html>
+ 
