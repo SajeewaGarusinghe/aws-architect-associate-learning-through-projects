@@ -1,0 +1,140 @@
+{
+  "eyebrow": "SAA-C03 · Lab 02",
+  "title": "Load Balancing Exam Drill",
+  "intro": "Twelve scenario questions on load balancers, target groups, Auto Scaling and health checks. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 02 — ALB + Auto Scaling. Reference notes: exam-notes.md",
+  "questions": [
+    {
+      "q": "An Auto Scaling group runs four instances behind an Application Load Balancer. On one instance the web server process crashes, but the operating system keeps running normally. The load balancer stops sending it traffic, yet the Auto Scaling group never replaces it and capacity stays reduced for hours. What is the cause?",
+      "options": [
+        "The health check grace period is too long",
+        "The Auto Scaling group's health check type is <code>EC2</code> rather than <code>ELB</code>",
+        "The target group's deregistration delay is too short",
+        "The minimum size of the Auto Scaling group is set too low"
+      ],
+      "answer": 1,
+      "why": "The default health check type, <code>EC2</code>, watches only hypervisor-level status checks — it sees a healthy host and does nothing. <code>ELB</code> makes the group inherit the target group's verdict, so a failed <em>application</em> triggers replacement, not just a failed host. <strong>The target group decides who receives traffic; the Auto Scaling group decides who exists — and they only agree when health check type is <code>ELB</code>.</strong>"
+    },
+    {
+      "q": "A web tier in private subnets must accept traffic only from an Application Load Balancer. Instances are replaced frequently by an Auto Scaling group, and a third availability zone will be added later. What inbound rule on the web tier's security group best meets this?",
+      "options": [
+        "Allow TCP 80 from the VPC CIDR block",
+        "Allow TCP 80 from the CIDR blocks of the public subnets",
+        "Allow TCP 80 with the load balancer's security group as the source",
+        "Allow TCP 80 from the load balancer's private IP addresses"
+      ],
+      "answer": 2,
+      "why": "A security group can name another security group as its source. The permission then follows the load balancer itself rather than any address range, so it survives instance replacement, subnet renumbering and the new AZ. The VPC CIDR admits every resource in the network; subnet CIDRs break when subnets change; and ALB private IPs are <strong>not stable</strong> — AWS changes them as the load balancer scales."
+    },
+    {
+      "q": "Users report <code>503 Service Temporarily Unavailable</code> from an Application Load Balancer. The EC2 instances behind it are running and their EC2 status checks pass. What does a 503 from an ALB most directly indicate?",
+      "options": [
+        "The target returned a malformed response",
+        "The target did not respond within the timeout",
+        "There are no healthy targets registered in the target group",
+        "The load balancer's security group is blocking inbound traffic"
+      ],
+      "answer": 2,
+      "why": "An ALB returns <strong>503 when it has no healthy target</strong> to forward to. <strong>502</strong> means a target returned a malformed response; <strong>504</strong> means the target did not answer within the timeout. Worth memorising — the exam uses these codes as the entire clue. Note that passing EC2 status checks says nothing about passing the <em>target group's</em> health check."
+    },
+    {
+      "q": "An application behind an Application Load Balancer logs the source IP of every request for audit purposes. After migrating behind the ALB, every logged address belongs to the VPC's private range. How should the application obtain the real client IP?",
+      "options": [
+        "Enable Proxy Protocol v2 on the target group",
+        "Read the <code>X-Forwarded-For</code> request header",
+        "Switch the target group's target type to <code>ip</code>",
+        "Enable cross-zone load balancing"
+      ],
+      "answer": 1,
+      "why": "An ALB terminates the client connection and opens a new one to the target, so the source IP the target sees is the load balancer's. The original client address is preserved in <code>X-Forwarded-For</code> (alongside <code>X-Forwarded-Proto</code> and <code>X-Forwarded-Port</code>). Proxy Protocol v2 is the <strong>NLB</strong> answer, not ALB — and an NLB with target type <code>instance</code> preserves the source IP natively."
+    },
+    {
+      "q": "A workload needs to handle millions of requests per second with ultra-low latency, must expose a static IP address per availability zone for a partner's firewall allow-list, and operates over TCP rather than HTTP. Which load balancer is appropriate?",
+      "options": [
+        "Application Load Balancer",
+        "Network Load Balancer",
+        "Gateway Load Balancer",
+        "Classic Load Balancer"
+      ],
+      "answer": 1,
+      "why": "Network Load Balancer: layer 4, millions of requests per second, single-digit millisecond latency, one static IP per AZ (with optional Elastic IPs), and it preserves the source IP. The ALB is layer 7 with no static IP. Gateway Load Balancer is for inserting third-party virtual appliances such as firewalls. Classic is legacy and should never be a correct answer on a current exam."
+    },
+    {
+      "q": "A team is creating a new Auto Scaling group and wants to use mixed instance types, Spot capacity, and enforce IMDSv2. They also want to keep previous versions of the configuration so they can roll back. What should they use?",
+      "options": [
+        "A launch configuration",
+        "A launch template",
+        "An AMI with the settings baked in",
+        "A CloudFormation stack set"
+      ],
+      "answer": 1,
+      "why": "Launch <strong>templates</strong> are versioned and support every current EC2 feature, including mixed instance policies, Spot, placement groups and metadata options such as requiring IMDSv2. Launch <strong>configurations</strong> are the deprecated predecessor: immutable, unversioned, and unable to express most of these. Any question mentioning versioning, rollback, mixed instances or Spot points to a launch template."
+    },
+    {
+      "q": "An application's CPU utilisation varies through the day. The team wants the Auto Scaling group to keep average CPU at roughly 50% with the least configuration effort. Which scaling policy should they choose?",
+      "options": [
+        "Simple scaling with a cooldown period",
+        "Step scaling with multiple adjustment tiers",
+        "Target tracking scaling",
+        "Scheduled scaling"
+      ],
+      "answer": 2,
+      "why": "Target tracking is the simplest: name a metric and a target value — \"average CPU at 50%\" — and AWS manages the scaling activity for you. Step scaling applies different adjustments depending on how far the metric has breached, which is more control and more configuration. Simple scaling is the older single-adjustment-with-cooldown model. Scheduled scaling suits predictable time-based patterns, not variable load."
+    },
+    {
+      "q": "After deploying a new AMI, an Auto Scaling group begins continuously launching and terminating instances. Each new instance is terminated a couple of minutes after launch and replaced. The application takes about three minutes to start serving. What is the most likely cause?",
+      "options": [
+        "The maximum size is set too low",
+        "The health check grace period is shorter than the application's startup time",
+        "The target group's health check interval is too long",
+        "The desired capacity exceeds the maximum size"
+      ],
+      "answer": 1,
+      "why": "The <strong>health check grace period</strong> is how long the group waits after launch before health checks count against an instance. Shorter than real startup time and every new instance is killed before it can pass its first check, so the group launches another — an <strong>infinite replacement loop that bills for every instance</strong>. \"Instances are constantly being terminated and relaunched\" is the exam's signature phrasing for this."
+    },
+    {
+      "q": "During a scale-in event, users occasionally see dropped connections as instances are removed. The team wants in-flight requests to complete before an instance is removed from service. Which setting controls this?",
+      "options": [
+        "The Auto Scaling group's cooldown period",
+        "The target group's deregistration delay",
+        "The load balancer's idle timeout",
+        "The health check grace period"
+      ],
+      "answer": 1,
+      "why": "The target group's <strong>deregistration delay</strong> — also called connection draining — is how long the load balancer lets in-flight requests finish before removing a target. Default 300 seconds, configurable 0–3600. Cooldown governs how soon the <em>next</em> scaling activity may start; idle timeout is about how long an idle connection is held open."
+    },
+    {
+      "q": "A web application stores user session data in memory on each EC2 instance. Users are randomly logged out whenever the Auto Scaling group scales in. Which change best resolves this while preserving the ability to scale horizontally?",
+      "options": [
+        "Enable sticky sessions on the target group",
+        "Increase the Auto Scaling group's minimum size",
+        "Move session state to ElastiCache or DynamoDB",
+        "Enable scale-in protection on all instances"
+      ],
+      "answer": 2,
+      "why": "Externalising session state makes the tier genuinely stateless, so any instance can serve any request and horizontal scaling works properly. Sticky sessions are a workaround that pins users to one instance — the session is <em>still</em> lost when that instance goes away, and load distributes unevenly. Scale-in protection prevents scaling from doing its job at all."
+    },
+    {
+      "q": "An architect is creating an Application Load Balancer in a VPC. What is the minimum subnet requirement?",
+      "options": [
+        "One subnet in one availability zone",
+        "Two subnets in the same availability zone",
+        "Two subnets in two different availability zones",
+        "One subnet per availability zone in the region"
+      ],
+      "answer": 2,
+      "why": "An ALB requires <strong>at least two subnets in two different availability zones</strong>. That requirement is precisely what makes an ALB inherently multi-AZ — and it is why this lab has two public subnets even though only the load balancer uses them."
+    },
+    {
+      "q": "A team compares cross-zone load balancing between an ALB and an NLB for a cost-sensitive workload. Which statement is correct?",
+      "options": [
+        "Both have it enabled by default and both charge for cross-AZ data transfer",
+        "ALB has it always enabled at no additional cost; NLB has it disabled by default and charges for cross-AZ data when enabled",
+        "ALB has it disabled by default; NLB has it always enabled and free",
+        "Neither supports cross-zone load balancing without a Global Accelerator"
+      ],
+      "answer": 1,
+      "why": "For an <strong>ALB</strong>, cross-zone load balancing is always on, cannot be disabled at the load balancer level, and incurs <strong>no</strong> cross-AZ data charge. For an <strong>NLB</strong> it is <strong>off by default</strong>, and enabling it means paying for cross-AZ data transfer. This asymmetry is a favourite cost-optimisation question."
+    }
+  ]
+}
