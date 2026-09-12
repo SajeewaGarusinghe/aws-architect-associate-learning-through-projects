@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 04",
+  "title": "Serverless Exam Drill",
+  "intro": "Twelve scenario questions on Lambda, API Gateway, DynamoDB and the per-request cost model. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 04 — The serverless API. Reference notes: exam-notes.md",
+  "notes_title": "Lab 04 (Serverless API)",
+  "notes_intro": "Twelve SAA-C03-style questions on event-driven compute, NoSQL access patterns and per-request pricing, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "An internal reporting tool is used heavily for two hours each morning and sits completely idle the rest of the day. The team wants to minimise cost. Which architecture best fits?",
+      "options": [
+        "EC2 instances in an Auto Scaling group with scheduled scaling",
+        "API Gateway with Lambda and DynamoDB on-demand",
+        "An Application Load Balancer in front of two reserved t3.medium instances",
+        "ECS on Fargate with a minimum task count of two"
+      ],
+      "answer": 1,
+      "why": "Serverless charges nothing while idle, which is the dominant cost factor for a workload idle 22 hours a day. The exam signals this with the words <strong>spiky, unpredictable, intermittent or infrequent</strong>. The corollary matters too: at sustained high volume, EC2 and provisioned capacity become cheaper again, so \"steady predictable load\" points the other way."
+    },
+    {
+      "q": "A DynamoDB table stores millions of orders with partition key customerId and sort key orderDate. A query retrieving one customer's orders is fast and cheap, but a report filtering all orders by status is slow and expensive. Why?",
+      "options": [
+        "The table needs provisioned capacity rather than on-demand",
+        "Filtering by a non-key attribute requires a Scan, which reads every item in the table",
+        "The sort key should be status rather than orderDate",
+        "DynamoDB cannot filter on non-key attributes at all"
+      ],
+      "answer": 1,
+      "why": "A <strong>Scan reads every item in the table</strong> and then discards the non-matching ones — and you are billed for everything read, not for what comes back. Cost and latency grow with total table size forever. The fix is a <strong>global secondary index</strong> on status, which gives a Query-able access pattern. Changing the table's own sort key would break the existing query."
+    },
+    {
+      "q": "A Lambda function creates a database connection object. A developer moves that creation from inside the handler to the module level, outside it. What is the effect?",
+      "options": [
+        "The connection is created once per request, increasing latency",
+        "The connection is created once per execution environment and reused across warm invocations",
+        "The connection is created once per account and shared between functions",
+        "The function will fail because module-level code cannot make network calls"
+      ],
+      "answer": 1,
+      "why": "Code outside the handler runs during the <strong>initialisation phase</strong>, once per execution environment — not once per request. Warm invocations reuse it, which is why moving expensive setup out of the handler is the standard Lambda optimisation. The tradeoff is that the init cost lands on the cold start instead."
+    },
+    {
+      "q": "A team needs API keys with usage plans, request validation, and integration with AWS WAF. Which API Gateway type should they choose?",
+      "options": [
+        "HTTP API, which is cheaper and faster",
+        "REST API, which supports these features",
+        "WebSocket API",
+        "Either — the two are functionally identical"
+      ],
+      "answer": 1,
+      "why": "<strong>REST APIs</strong> support API keys with usage plans, request/response transformation, request validation, WAF integration, caching and private endpoints. <strong>HTTP APIs</strong> are roughly 70% cheaper and lower latency but omit those features. On the exam, any mention of API keys, usage plans, request validation or WAF points to REST."
+    },
+    {
+      "q": "A Lambda function must read from an S3 bucket. What is the correct way to give it access?",
+      "options": [
+        "Store IAM access keys in the function's environment variables",
+        "Attach an execution role with an s3:GetObject policy scoped to that bucket",
+        "Place the function in the same VPC as the bucket",
+        "Add the function's IP address to the bucket policy"
+      ],
+      "answer": 1,
+      "why": "Lambda assumes its <strong>execution role</strong> and receives temporary credentials automatically — no long-lived keys should exist anywhere. Scope the policy to the specific bucket ARN rather than <code>s3:*</code> on <code>*</code>. S3 is not in a VPC, and Lambda has no stable IP address to allow-list."
+    },
+    {
+      "q": "An application experiences a sudden traffic spike and some API calls return HTTP 429. The Lambda function itself is healthy and its code is unchanged. What is the most likely cause?",
+      "options": [
+        "The function timed out at 15 minutes",
+        "Concurrent executions hit the account or reserved concurrency limit, so invocations were throttled",
+        "The execution role lost its permissions",
+        "The function ran out of memory"
+      ],
+      "answer": 1,
+      "why": "429 means <strong>throttling</strong>. Lambda scales concurrent executions to an account limit — 1,000 by default — and a reserved concurrency setting on the function caps it lower. Timeouts surface as 502/504 and appear in the logs as a timeout; out-of-memory kills the invocation with a specific error. Fixes are raising the limit, reserved concurrency, or provisioned concurrency."
+    },
+    {
+      "q": "A team wants to eliminate cold-start latency for a latency-sensitive Lambda function. What should they use, and what is the tradeoff?",
+      "options": [
+        "Reserved concurrency — it caps cost but does not affect cold starts",
+        "Provisioned concurrency — it keeps environments initialised, but bills hourly",
+        "Increasing the timeout — it gives the function more time to initialise",
+        "Attaching the function to a VPC — it keeps network interfaces warm"
+      ],
+      "answer": 1,
+      "why": "<strong>Provisioned concurrency</strong> keeps a set number of execution environments initialised and ready, eliminating cold starts for that many concurrent invocations — but it bills for that capacity by the hour, which gives up the zero-idle-cost property that makes serverless attractive. <strong>Reserved</strong> concurrency does something entirely different: it caps how many concurrent executions a function may use."
+    },
+    {
+      "q": "What is the maximum execution time for a single Lambda invocation?",
+      "options": [
+        "5 minutes",
+        "15 minutes",
+        "1 hour",
+        "Unlimited, as long as the function reports progress"
+      ],
+      "answer": 1,
+      "why": "<strong>15 minutes.</strong> Any workload needing longer must move to Fargate, ECS, Batch or EC2, or be decomposed into steps coordinated by Step Functions. This limit is a common exam discriminator — a question describing a four-hour batch job is ruling Lambda out."
+    },
+    {
+      "q": "A DynamoDB table's traffic is completely unpredictable, swinging between zero and thousands of requests per second with no pattern. Which capacity mode is appropriate?",
+      "options": [
+        "Provisioned capacity with auto scaling",
+        "On-demand capacity",
+        "Provisioned capacity with reserved capacity purchased upfront",
+        "Provisioned capacity sized for the peak"
+      ],
+      "answer": 1,
+      "why": "<strong>On-demand</strong> charges per request with no capacity planning and absorbs sudden spikes instantly — the right fit for unpredictable traffic. Provisioned auto scaling reacts over minutes and can throttle during a sharp spike. Provisioning for peak wastes money constantly. On-demand costs more per request at steady high volume, which is when provisioned wins."
+    },
+    {
+      "q": "A Lambda function returns 500 errors. CloudWatch Logs shows: \"AccessDeniedException … is not authorized to perform: dynamodb:Query on resource: arn:aws:dynamodb:…:table/orders\". What does this tell you?",
+      "options": [
+        "The table does not exist",
+        "The execution role's policy does not permit the Query action on that table",
+        "The function is not attached to the correct VPC",
+        "DynamoDB is throttling the request"
+      ],
+      "answer": 1,
+      "why": "An <code>AccessDeniedException</code> names three things: <strong>who</strong> (the assumed role), <strong>what action</strong> (<code>dynamodb:Query</code>) and <strong>which resource</strong> (the table ARN). Here the role is missing Query on that table — note that other actions such as PutItem may still work, because IAM is evaluated per action. A missing table gives ResourceNotFoundException; throttling gives ProvisionedThroughputExceededException."
+    },
+    {
+      "q": "A Lambda function is created and invoked without an explicitly declared CloudWatch log group. What is the cost risk?",
+      "options": [
+        "Logs are not captured at all, so failures go unnoticed",
+        "Lambda creates the log group with retention set to never expire, and it accumulates storage charges indefinitely",
+        "Each invocation creates a new log group",
+        "Log ingestion is billed at double the normal rate"
+      ],
+      "answer": 1,
+      "why": "Lambda creates the log group implicitly on first invocation with <strong>retention set to never expire</strong>. Logs accumulate storage charges for the life of the account unless someone notices. Declaring the log group in the template with an explicit <code>RetentionInDays</code> — as this lab does — is the fix, and it is a genuinely common source of unexplained CloudWatch charges."
+    },
+    {
+      "q": "How does API Gateway obtain permission to invoke a Lambda function?",
+      "options": [
+        "The function's execution role includes a lambda:InvokeFunction statement",
+        "A resource-based policy on the function grants the apigateway.amazonaws.com service principal",
+        "Both must be placed in the same VPC and security group",
+        "API Gateway uses the credentials of the user who deployed the API"
+      ],
+      "answer": 1,
+      "why": "A <strong>resource-based policy</strong> on the function grants the API Gateway service principal permission to invoke it, scoped to the specific API's ARN. This is the inverse of an execution role: the execution role says what the function may do, while the resource policy says who may call it. There is no network relationship between the two services at all."
+    }
+  ]
+}

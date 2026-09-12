@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 04 - Serverless API. HTTP API Gateway to Lambda to DynamoDB, with no
+  VPC, no instances, and no hourly charge of any kind. Idle cost is genuinely
+  zero, which is the point of the lab.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-04
+
+Resources:
+
+  # ------------------------------------------------------------------- storage
+  # On-demand billing: pay per request, nothing for sitting still. Provisioned
+  # capacity would bill around the clock whether or not anything reads or writes.
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub '${LabName}-notes'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      # Partition key spreads items; sort key orders them within a partition.
+      # Query needs both to be efficient; Scan reads every item and is the
+      # single most common cause of a surprising DynamoDB bill.
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      Tags:
+        - { Key: Name, Value: !Sub '${LabName}-notes' }
+
+  # ------------------------------------------------------------------ compute
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: notes-table-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Four actions on one table. Not dynamodb:* and not Resource "*" -
+              # this scoping is what the failure injection removes and restores.
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt Table.Arn
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-fn-role' }]
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LabName}-api'
+      RetentionInDays: 1
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: !Sub '${LabName}-api'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt FunctionRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+      Code:
+        ZipFile: |
+          import json, os, time, uuid
+          import boto3
+          from boto3.dynamodb.conditions import Key
+
+          # Created once per execution environment, not once per request. This
+          # is why a warm invocation is so much faster than a cold start.
+          TABLE = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
+          BOOTED = time.time()
+
+          def reply(code, body):
+              return {
+                  "statusCode": code,
+                  "headers": {"content-type": "application/json"},
+                  "body": json.dumps(body, default=str),
+              }
+
+          def handler(event, context):
+              method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
+              path = event.get("rawPath", "/")
+              try:
+                  if path == "/notes" and method == "POST":
+                      body = json.loads(event.get("body") or "{}")
+                      item = {
+                          "pk": "note",
+                          "sk": f"{int(time.time()*1000)}#{uuid.uuid4().hex[:8]}",
+                          "text": body.get("text", "(empty)"),
+                      }
+                      TABLE.put_item(Item=item)
+                      return reply(201, {"created": item})
+
+                  if path == "/notes" and method == "GET":
+                      # Query on the partition key. A Scan here would read every
+                      # item in the table and cost proportionally more.
+                      res = TABLE.query(
+                          KeyConditionExpression=Key("pk").eq("note"),
+                          ScanIndexForward=False,
+                          Limit=25,
+                      )
+                      return reply(200, {"count": res["Count"], "notes": res["Items"]})
+
+                  return reply(200, {
+                      "service": "saa lab 04",
+                      "cold_start_age_seconds": round(time.time() - BOOTED, 1),
+                      "request_id": context.aws_request_id,
+                      "try": ["GET /notes", "POST /notes  {\"text\": \"hello\"}"],
+                  })
+
+              except Exception as exc:
+                  # Surfaces AccessDeniedException plainly during the IAM
+                  # failure injection instead of an opaque 502.
+                  print(f"ERROR {type(exc).__name__}: {exc}")
+                  return reply(500, {"error": type(exc).__name__, "detail": str(exc)})
+
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-api' }]
+
+  # --------------------------------------------------------------------- API
+  # An HTTP API, not a REST API: roughly 70% cheaper, lower latency, and enough
+  # for a Lambda proxy integration. REST APIs buy request validation, API keys
+  # with usage plans, WAF integration and private endpoints.
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${LabName}-api'
+      ProtocolType: HTTP
+      Tags: { Name: !Sub '${LabName}-api' }
+
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub 'integrations/${Integration}'
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  # API Gateway is a service principal, not a network path - this is what lets
+  # it invoke the function. There is no security group anywhere in this stack.
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+Outputs:
+  ApiUrl:
+    Description: Open this, then POST a note and GET them back
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  PostExample:
+    Value: !Sub 'curl -s -XPOST https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/notes -d ''{"text":"hello from the exam"}'''
+  GetExample:
+    Value: !Sub 'curl -s https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/notes'
+  TableName:    { Value: !Ref Table }
+  FunctionName: { Value: !Ref ApiFunction }
+  LogGroup:     { Value: !Ref LogGroup }
+  IdleCost:
+    Description: What this stack costs while nobody uses it
+    Value: 'USD 0.00 per hour - every component bills per request'

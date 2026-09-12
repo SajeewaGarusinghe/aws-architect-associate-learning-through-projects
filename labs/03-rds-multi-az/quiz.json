@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 03",
+  "title": "Database Resilience Drill",
+  "intro": "Twelve scenario questions on Multi-AZ, read replicas, backups and database security. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 03 — RDS Multi-AZ. Reference notes: exam-notes.md",
+  "notes_title": "Lab 03 (RDS Multi-AZ)",
+  "notes_intro": "Twelve SAA-C03-style questions on database availability, replication and security, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "An application's RDS database is under heavy read load and the primary instance is CPU-saturated. The team enables Multi-AZ hoping to spread the reads. Performance does not improve. Why?",
+      "options": [
+        "The standby needs to be promoted before it can serve reads",
+        "The Multi-AZ standby serves no traffic — it exists only for failover",
+        "Multi-AZ replication is asynchronous, so the standby lags too far behind",
+        "The application must be reconfigured to use the reader endpoint"
+      ],
+      "answer": 1,
+      "why": "A Multi-AZ standby accepts <strong>no connections at all</strong>. It adds no read capacity and no throughput — you are buying a recovery time objective, nothing else. Read scaling comes from <strong>read replicas</strong>, which are asynchronous and do serve reads. <strong>Multi-AZ is for availability; read replicas are for scale</strong> — the exam tests whether you know these are different problems. There is no reader endpoint on a plain RDS instance; that is an Aurora feature."
+    },
+    {
+      "q": "During a routine RDS maintenance window, a Multi-AZ database fails over. Users see application errors for about a minute even though the database lost no data. What is the most likely explanation?",
+      "options": [
+        "The standby was not fully synchronised before the failover",
+        "Failover severs open connections, and the application has no retry logic",
+        "DNS caching in the application prevented it from finding the new primary",
+        "Multi-AZ failover requires a manual promotion step"
+      ],
+      "answer": 1,
+      "why": "<strong>Every failover severs every open connection.</strong> Multi-AZ protects your data — it is not transparent at the TCP level. An application without connection retry and reconnect logic will surface errors to users during any failover, including routine patching, while the database itself is perfectly healthy throughout. Multi-AZ protects the data; only the client protects the user experience."
+    },
+    {
+      "q": "A company must keep its RDS database reachable only from its application tier, which runs on EC2 instances that are replaced frequently by an Auto Scaling group. What is the best way to restrict database access?",
+      "options": [
+        "A security group rule allowing 5432 from the VPC CIDR block",
+        "A security group rule whose source is the application tier's security group",
+        "A network ACL on the database subnets allowing only the application subnets",
+        "An IAM policy restricting rds:Connect to the application role"
+      ],
+      "answer": 1,
+      "why": "A security group can name another security group as its source, so the permission follows the application tier rather than any address range — it keeps working as instances are replaced and subnets change. The VPC CIDR admits everything in the network. A NACL is coarser and stateless. IAM database authentication exists but is a separate feature that does not replace network controls."
+    },
+    {
+      "q": "An RDS instance was created without encryption. Compliance now requires encryption at rest. What must the team do?",
+      "options": [
+        "Enable the StorageEncrypted setting with a modify operation",
+        "Take a snapshot, copy the snapshot with encryption enabled, and restore it into a new instance",
+        "Enable encryption on the DB subnet group",
+        "Rotate the master key in KMS, which encrypts the existing volume"
+      ],
+      "answer": 1,
+      "why": "<strong>Encryption must be chosen at creation.</strong> You cannot encrypt an existing unencrypted RDS instance in place. The supported path is snapshot → copy the snapshot with encryption enabled → restore that copy as a new instance → cut over. The same restriction applies in reverse: you cannot remove encryption from an encrypted instance."
+    },
+    {
+      "q": "Which statement about RDS read replicas is correct?",
+      "options": [
+        "They use synchronous replication and can be failed over to automatically",
+        "They use asynchronous replication, can lag, and must be promoted manually",
+        "They must be in the same availability zone as the primary",
+        "They cannot be created in a different region from the primary"
+      ],
+      "answer": 1,
+      "why": "Read replicas replicate <strong>asynchronously</strong>, which means they can lag behind the primary and may be missing recent writes at the moment you promote them — and promotion is a manual action. They can live in a different AZ <em>or a different region</em>, which makes them useful for both read scaling and cross-region disaster recovery. Synchronous, automatic failover is the Multi-AZ standby's job."
+    },
+    {
+      "q": "A team wants the RDS master password to exist nowhere in their CloudFormation template, deployment pipeline, or source control, and to be rotated automatically. What should they use?",
+      "options": [
+        "A CloudFormation parameter with NoEcho set to true",
+        "The ManageMasterUserPassword property, which has RDS create and own a secret",
+        "An SSM Parameter Store SecureString referenced by the template",
+        "A hardcoded password changed manually after deployment"
+      ],
+      "answer": 1,
+      "why": "<code>ManageMasterUserPassword: true</code> has RDS generate the password, create the Secrets Manager secret, own it, and rotate it — no human or template ever sees the value. <code>NoEcho</code> only hides a parameter in the console; the value still travels through the pipeline and shell history. A SecureString is better than plaintext but you still supply and rotate the initial value yourself."
+    },
+    {
+      "q": "An RDS database has automated backups with a 7-day retention period. A developer accidentally deletes a table at 14:30. The team wants to recover the state from 14:25. What capability do they need?",
+      "options": [
+        "Restore the most recent automated snapshot",
+        "Point-in-time recovery, which restores to any second within the retention period",
+        "Promote the Multi-AZ standby, which retains the deleted table",
+        "Restore from the read replica, which has not yet replicated the delete"
+      ],
+      "answer": 1,
+      "why": "Automated backups enable <strong>point-in-time recovery</strong>: RDS combines daily snapshots with continuously archived transaction logs so you can restore to any second within the retention window, always into a <em>new</em> instance. A snapshot alone only gets you to the snapshot's moment. The standby is synchronous, so it deleted the table too. A replica would replicate the delete within seconds."
+    },
+    {
+      "q": "A DB subnet group is being created for a single-AZ RDS instance. What is the minimum requirement?",
+      "options": [
+        "One subnet in one availability zone",
+        "Subnets in at least two availability zones",
+        "One private and one public subnet",
+        "One subnet per availability zone in the region"
+      ],
+      "answer": 1,
+      "why": "A DB subnet group requires subnets in <strong>at least two availability zones even for a single-AZ instance</strong>. That requirement exists so that converting to Multi-AZ later — or letting RDS move the instance during recovery — is a simple modify rather than a migration. It is a small detail that appears regularly on the exam."
+    },
+    {
+      "q": "A workload needs a relational database that can scale reads to fifteen replicas with sub-10ms replica lag, automatically grows storage, and fails over in under 30 seconds. Which option best fits?",
+      "options": [
+        "RDS for PostgreSQL with Multi-AZ enabled",
+        "Amazon Aurora",
+        "RDS for MySQL with five read replicas",
+        "DynamoDB with global tables"
+      ],
+      "answer": 1,
+      "why": "Aurora supports up to <strong>15 read replicas</strong> with typically sub-10ms replica lag, a shared distributed storage layer that grows automatically to 128 TiB, and failover usually under 30 seconds. Standard RDS caps read replicas at 5 per instance with higher lag. DynamoDB is not relational, so it fails the requirement outright."
+    },
+    {
+      "q": "An RDS instance is being deleted through CloudFormation. The team wants no leftover charges and no retained snapshot. Which combination achieves this?",
+      "options": [
+        "DeletionPolicy: Retain with DeleteAutomatedBackups: false",
+        "DeletionPolicy: Delete with DeleteAutomatedBackups: true",
+        "DeletionPolicy: Snapshot, which is always free",
+        "Deleting the DB subnet group first, which cascades to the instance"
+      ],
+      "answer": 1,
+      "why": "<code>DeletionPolicy: Delete</code> removes the instance without retaining a final snapshot, and <code>DeleteAutomatedBackups: true</code> removes the automated backups that would otherwise persist and bill. <code>Retain</code> deliberately leaves the instance running — and billing. <code>Snapshot</code> keeps a manual snapshot, which is charged per GB beyond the free allowance and survives the stack indefinitely."
+    },
+    {
+      "q": "A database in a private subnet has PubliclyAccessible set to false, and its route table contains only the local route. A developer asks whether they also need a NAT gateway so the database can download engine patches. What is correct?",
+      "options": [
+        "Yes — RDS instances need outbound internet access for patching",
+        "No — RDS is a managed service and patches through the AWS backbone, not your VPC route table",
+        "Yes, but only during the maintenance window",
+        "No, but only if a VPC endpoint for RDS is created"
+      ],
+      "answer": 1,
+      "why": "RDS is managed: AWS patches the engine through its own control plane, not through your VPC's routing. A database subnet needs no NAT gateway and no internet route, which is exactly why this lab's private route table carries only the <code>local</code> route. Adding a NAT gateway here would cost $0.059/hour and buy nothing."
+    },
+    {
+      "q": "After a Multi-AZ failover, an operations engineer checks the RDS endpoint. What has changed?",
+      "options": [
+        "The endpoint DNS name changes and clients must be reconfigured",
+        "The endpoint name is unchanged; it now resolves to the promoted standby's address",
+        "The endpoint keeps the same IP address, which is moved between availability zones",
+        "A new endpoint is created and the old one returns errors until deleted"
+      ],
+      "answer": 1,
+      "why": "Failover works by <strong>repointing a DNS record</strong>. The endpoint hostname is identical before and after; only the address it resolves to changes — in this lab, from a <code>10.40.11.x</code> in AZ-a to a <code>10.40.12.x</code> in AZ-b. No client reconfiguration is needed, though every client must reconnect because its existing connection was severed."
+    }
+  ]
+}

@@ -1,0 +1,250 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 03 - RDS PostgreSQL Multi-AZ with a managed master password in Secrets
+  Manager, a private DB subnet group, and a client instance used to hold a query
+  loop open across a forced failover.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-03
+  VpcCidr:
+    Type: String
+    Default: 10.40.0.0/16
+  LatestAl2023Ami:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+
+  # ---------------------------------------------------------------- networking
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true     # the RDS endpoint is a DNS name, so both of
+      EnableDnsHostnames: true   # these matter more here than usual
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-vpc' }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-igw' }]
+
+  IgwAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-public-a' }]
+
+  # A DB subnet group needs subnets in at least two AZs even for a single-AZ
+  # instance - that requirement is what makes promoting to Multi-AZ possible later.
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-private-a' }]
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-private-b' }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-rt-public' }]
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable }
+
+  # No default route: the database must never reach or be reached by the internet.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-rt-private' }]
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetA, RouteTableId: !Ref PrivateRouteTable }
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTable }
+
+  # ------------------------------------------------------------ security groups
+  ClientSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Client instance - no inbound; SSM dials outward
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: SSM and package repos }
+        - { IpProtocol: tcp, FromPort: 80,  ToPort: 80,  CidrIp: 0.0.0.0/0, Description: package repos }
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: !Ref VpcCidr, Description: PostgreSQL to the database }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-sg-client' }]
+
+  # Source is the client's security group, not a CIDR. Nothing else in the VPC
+  # can open a connection to the database, whatever address it holds.
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Database - PostgreSQL in from the client security group only
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-sg-db' }]
+
+  DbIngressFromClient:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DbSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ClientSecurityGroup
+      Description: PostgreSQL from the client only
+
+  # ----------------------------------------------------------------- database
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub '${LabName} private subnets'
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-db-subnets' }]
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub '${LabName}-db'
+      Engine: postgres
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      # The whole point of the lab. RDS keeps a hot standby in the other AZ and
+      # replicates to it synchronously - so failover loses no committed data.
+      MultiAZ: true
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      PubliclyAccessible: false
+      MasterUsername: labadmin
+      # RDS generates the password, stores it in Secrets Manager and rotates it.
+      # No password ever appears in this template, in CloudFormation, or in git.
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 1
+      DeleteAutomatedBackups: true
+      EnableCloudwatchLogsExports: [postgresql]
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-db' }]
+
+  # ------------------------------------------------------------------- client
+  ClientRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-db-secret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Scoped to this one secret, not secretsmanager:* on everything.
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !GetAtt Database.MasterUserSecret.SecretArn
+              - Effect: Allow
+                Action: [rds:DescribeDBInstances, rds:RebootDBInstance]
+                Resource: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${LabName}-db'
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-client-role' }]
+
+  ClientProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: { Roles: [!Ref ClientRole] }
+
+  Client:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAl2023Ami
+      InstanceType: t3.micro
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroupIds: [!Ref ClientSecurityGroup]
+      IamInstanceProfile: !Ref ClientProfile
+      MetadataOptions: { HttpTokens: required, HttpEndpoint: enabled }
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-client' }]
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+          dnf install -y postgresql16 jq
+
+          # Fetch the RDS-managed password from Secrets Manager at run time.
+          cat > /usr/local/bin/dbenv <<'SCRIPT'
+          #!/bin/bash
+          SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id SECRET_ARN_HERE \
+            --query SecretString --output text --region REGION_HERE)
+          export PGPASSWORD=$(echo "$SECRET" | jq -r .password)
+          export PGHOST=ENDPOINT_HERE
+          export PGUSER=labadmin
+          export PGDATABASE=postgres
+          SCRIPT
+          sed -i "s|SECRET_ARN_HERE|${Database.MasterUserSecret.SecretArn}|" /usr/local/bin/dbenv
+          sed -i "s|REGION_HERE|${AWS::Region}|"                             /usr/local/bin/dbenv
+          sed -i "s|ENDPOINT_HERE|${Database.Endpoint.Address}|"             /usr/local/bin/dbenv
+          chmod +x /usr/local/bin/dbenv
+
+          # Prints the AZ the database is currently serving from, once a second.
+          cat > /usr/local/bin/dbwatch <<'SCRIPT'
+          #!/bin/bash
+          source /usr/local/bin/dbenv
+          while true; do
+            OUT=$(psql -tAc "select now(), inet_server_addr()" 2>&1 | head -1)
+            echo "$(date +%H:%M:%S)  $OUT"
+            sleep 1
+          done
+          SCRIPT
+          chmod +x /usr/local/bin/dbwatch
+
+          echo 'source /usr/local/bin/dbenv 2>/dev/null || true' >> /etc/profile.d/lab.sh
+
+Outputs:
+  DbEndpoint:
+    Description: Stays identical across a failover - that is the point
+    Value: !GetAtt Database.Endpoint.Address
+  DbIdentifier:   { Value: !Ref Database }
+  DbSecretArn:    { Value: !GetAtt Database.MasterUserSecret.SecretArn }
+  ClientInstance: { Value: !Ref Client }
+  VpcId:          { Value: !Ref Vpc }
+  SessionManagerUrl:
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/systems-manager/session-manager/${Client}?region=${AWS::Region}'
+  FailoverCommand:
+    Description: Run this to force a failover, then watch dbwatch
+    Value: !Sub 'aws rds reboot-db-instance --db-instance-identifier ${LabName}-db --force-failover --region ${AWS::Region}'

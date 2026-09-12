@@ -243,10 +243,48 @@ render();
 """
 
 
+LETTERS = "ABCDE"
+
+
+def to_markdown(html: str) -> str:
+    """The quiz stores inline HTML; the notes want markdown."""
+    import re
+    out = re.sub(r"<code>(.*?)</code>", r"`\1`", html, flags=re.S)
+    out = re.sub(r"<strong>(.*?)</strong>", r"**\1**", out, flags=re.S)
+    out = re.sub(r"<em>(.*?)</em>", r"*\1*", out, flags=re.S)
+    return re.sub(r"<[^>]+>", "", out)
+
+
+def write_notes(spec, path, extra_path):
+    """Compose exam-notes.md from the same questions the drill uses, so the two
+    can never drift apart, plus a hand-written traps/reference section."""
+    L = []
+    L.append(f"# Exam notes — {spec['notes_title']}\n")
+    L.append(spec["notes_intro"] + "\n")
+    L.append("---\n")
+    L.append("## Questions\n")
+    for n, q in enumerate(spec["questions"], 1):
+        L.append(f"**{n}.** {to_markdown(q['q'])}\n")
+        for i, opt in enumerate(q["options"]):
+            L.append(f"- {LETTERS[i]}. {to_markdown(opt)}")
+        L.append("")
+    L.append("---\n")
+    L.append("## Answers\n")
+    for n, q in enumerate(spec["questions"], 1):
+        L.append(f"**{n} — {LETTERS[q['answer']]}.** {to_markdown(q['why'])}\n")
+    if extra_path and extra_path.exists():
+        L.append("---\n")
+        L.append(extra_path.read_text().strip() + "\n")
+    path.write_text("\n".join(L))
+    print(f"wrote {path} ({len(spec['questions'])} questions)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("lab")
     ap.add_argument("--artifact-out", help="also write a copy here (same content)")
+    ap.add_argument("--notes", action="store_true",
+                    help="also generate exam-notes.md from the same questions")
     args = ap.parse_args()
 
     lab = pathlib.Path(args.lab.rstrip("/"))
@@ -273,6 +311,9 @@ def main():
     if args.artifact_out:
         pathlib.Path(args.artifact_out).write_text(html)
         print(f"wrote {args.artifact_out}")
+
+    if args.notes:
+        write_notes(spec, lab / "exam-notes.md", lab / "notes-extra.md")
 
 
 if __name__ == "__main__":

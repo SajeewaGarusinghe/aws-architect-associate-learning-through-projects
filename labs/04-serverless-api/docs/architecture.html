@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Serverless API</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<style>
+  html,body{margin:0;padding:0;}
+  body{background:#5a5f66;}
+  .sheet{width:8.5in;min-height:11in;margin:24px auto;padding:0.7in;background:#fff;
+    box-shadow:0 2px 18px rgba(0,0,0,.35);box-sizing:border-box;}
+  @page{size:letter;margin:0.7in;}
+  @media print{ body{background:#fff;} .sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;} }
+
+  :root{
+    --ink:#232F3E; --slate:#37475A; --orange:#FF9900; --orange-d:#EC7211;
+    --gray:#545B64; --gray-l:#879196; --wash:#FAFAFA; --line:#E3E7EB;
+    --blue:#2D72B8; --purple:#8B5CF6;
+  }
+  *{box-sizing:border-box}
+  body{color:var(--ink);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;}
+  .sheet{font-size:11pt;line-height:1.6;color:#1c2430;}
+  p{margin:0 0 10px;}
+  strong{font-weight:600;color:var(--ink);}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.2pt;background:#EEF1F4;border:1px solid #E0E5EA;border-radius:4px;padding:1px 5px;color:#2a3542;}
+
+  .cover{background:var(--ink);color:#fff;margin:-0.7in -0.7in 26px;padding:66px 0.7in 48px;position:relative;overflow:hidden;}
+  .cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--orange);}
+  .cover::before{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.16),transparent 68%);}
+  .cover .eyebrow{font-size:11pt;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:18px;}
+  .cover h1{font-size:33pt;line-height:1.08;margin:0 0 14px;font-weight:800;letter-spacing:-.015em;max-width:16em;text-wrap:balance;}
+  .cover .sub{font-size:12.5pt;color:#c7ced6;max-width:34em;line-height:1.55;}
+  .cover .meta{margin-top:28px;display:flex;gap:30px;flex-wrap:wrap;font-size:9.5pt;color:#9aa5b1;}
+  .cover .meta b{color:#fff;font-weight:700;display:block;font-size:16pt;margin-bottom:2px;font-variant-numeric:tabular-nums;}
+
+  h2.sec{font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-d);font-weight:700;margin:0 0 4px;}
+  .p-h{font-size:16pt;font-weight:800;color:var(--ink);margin:0 0 6px;line-height:1.22;letter-spacing:-.01em;}
+  .p-h .num{color:var(--orange-d);}
+  .head-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;}
+
+  .sub-lbl{display:flex;align-items:center;gap:9px;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--orange-d);margin:16px 0 9px;}
+  .sub-lbl::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,var(--orange) 0%,var(--line) 100%);}
+
+  .p{margin-bottom:26px;}
+  .lede{background:var(--wash);border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:6px;padding:14px 18px;margin-bottom:6px;break-inside:avoid;}
+  .lede .tag{display:inline-block;font-size:8pt;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--slate);padding:2px 8px;border-radius:3px;margin-bottom:9px;}
+  .lede p{margin:0;font-size:10.5pt;color:#2a3542;}
+
+  .reqs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;break-inside:avoid;}
+  .reqs .col{border:1px solid var(--line);border-radius:6px;padding:10px 13px;background:#fff;}
+  .reqs .col h4{margin:0 0 6px;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:5px;}
+  .reqs ul{margin:0;padding-left:15px;font-size:9.5pt;color:#33404d;line-height:1.5;}
+  .reqs li{margin-bottom:4px;}
+  .reqs li::marker{color:var(--orange);}
+
+  .svc{margin:6px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .svc .r{display:flex;border-top:1px solid var(--line);font-size:9.7pt;}
+  .svc .r:first-child{border-top:none;}
+  .svc .name{flex:0 0 30%;padding:9px 13px;font-weight:700;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:flex-start;gap:7px;}
+  .svc .name .dot{width:8px;height:8px;border-radius:2px;flex:none;margin-top:5px;}
+  .svc .role{flex:1;padding:9px 13px;color:#3a4552;}
+  .svc .role b{color:var(--ink);}
+
+  .callout{border-radius:6px;padding:11px 14px;margin:12px 0;font-size:9.8pt;line-height:1.5;break-inside:avoid;}
+  .callout .ct{font-weight:700;display:block;margin-bottom:2px;font-size:9pt;letter-spacing:.03em;}
+  .callout.key{background:#F0F6FC;border:1px solid #CFE2F3;color:#1c3a52;}
+  .callout.key .ct{color:#1f6feb;}
+  .callout.tip{background:#FFF4E0;border:1px solid #FBD79A;color:#5a3d0a;}
+  .callout.tip .ct{color:var(--orange-d);}
+  .callout.warn{background:#FDECEC;border:1px solid #F5C2C2;color:#6b1d1d;}
+  .callout.warn .ct{color:#C0392B;}
+
+  .flowsteps{margin:6px 0;}
+  .flowsteps .step{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line);break-inside:avoid;}
+  .flowsteps .step:first-child{border-top:none;}
+  .flowsteps .idx{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--orange);font-weight:800;font-size:9.5pt;display:flex;align-items:center;justify-content:center;}
+  .flowsteps .bd{flex:1;font-size:9.7pt;color:#3a4552;}
+  .flowsteps .bd b{color:var(--ink);}
+
+  .why{margin:12px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .why .cap-t{background:var(--ink);color:#fff;padding:6px 13px;font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;}
+  .why .row{display:flex;border-top:1px solid var(--line);font-size:9.6pt;}
+  .why .opt{flex:0 0 34%;padding:8px 12px;font-weight:600;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);}
+  .why .rea{flex:1;padding:8px 12px;color:#3a4552;}
+  .why .opt.no::before{content:"\2717  ";color:#C0392B;font-weight:800;}
+  .why .opt.yes{background:#EAF7F1;}
+  .why .opt.yes::before{content:"\2713  ";color:#1B9E77;font-weight:800;}
+
+  .spine{border:1px solid var(--line);border-radius:7px;margin:16px 0 4px;overflow:hidden;break-inside:avoid;background:#fff;box-shadow:0 1px 2px rgba(35,47,62,.05);}
+  .spine .hd{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:8px 15px;font-size:8.6pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;}
+  .spine .hd .clk{margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--orange);text-transform:none;}
+  .spine .bd{padding:11px 15px 13px;}
+  .spine .tl{margin-bottom:11px;}
+  .spine .ph{display:flex;gap:12px;padding:6px 0;border-top:1px dashed var(--line);}
+  .spine .ph:first-child{border-top:none;padding-top:0;}
+  .spine .ph .mn{flex:0 0 64px;font-size:7.8pt;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--orange-d);padding-top:2px;}
+  .spine .ph .tx{flex:1;font-size:9.6pt;color:#33404d;line-height:1.5;}
+  .spine .ph .tx b{color:var(--ink);font-weight:600;}
+  .spine .three{background:var(--wash);border:1px solid var(--line);border-radius:5px;padding:9px 13px;margin-bottom:9px;}
+  .spine .three .lb,.spine .flag .lb{font-size:7.6pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:5px;display:block;}
+  .spine .three ol{margin:0;padding-left:16px;font-size:9.4pt;color:#2a3542;line-height:1.5;}
+  .spine .three li{margin-bottom:2px;}
+  .spine .three li::marker{color:var(--orange-d);font-weight:700;}
+  .spine .flag{font-size:9.3pt;line-height:1.45;color:#6b1d1d;background:#FDECEC;border:1px solid #F5C2C2;border-radius:5px;padding:8px 12px;}
+  .spine .flag .lb{color:#C0392B;}
+  .spine .flag b{color:#8f2a20;font-weight:600;}
+
+  figure.dg{margin:16px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;break-inside:avoid;background:#fff;}
+  figure.dg .cap{background:var(--wash);border-top:1px solid var(--line);padding:7px 14px;font-size:8.8pt;color:var(--gray);}
+  figure.dg .cap b{color:var(--orange-d);font-weight:700;}
+  figure.dg svg{display:block;width:100%;height:auto;}
+
+  .d-bg{fill:#fff;}
+  .vpc{fill:#F5F8FB;stroke:#2D72B8;stroke-width:1.5;stroke-dasharray:6 4;}
+  .region{fill:none;stroke:#545B64;stroke-width:1.4;stroke-dasharray:2 3;}
+  .az{fill:#FBFDFF;stroke:#879196;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-pub{fill:#EAF7F1;stroke:#1B9E77;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-priv{fill:#EEF4FB;stroke:#2D72B8;stroke-width:1;stroke-dasharray:4 3;}
+  .asg{fill:none;stroke:#8B5CF6;stroke-width:1.5;stroke-dasharray:7 4;}
+  .tile{fill:#232F3E;}
+  .tile-o{fill:#FF9900;}
+  .tile-g{fill:#545B64;}
+  .tile-w{fill:#fff;stroke:#232F3E;stroke-width:1.3;}
+  .tile-ghost{fill:#F4F6F8;stroke:#A9B4BF;stroke-width:1.2;stroke-dasharray:5 4;}
+  .t-lbl{font:600 11px 'Inter',sans-serif;fill:#fff;text-anchor:middle;}
+  .t-lbli{font:600 11px 'Inter',sans-serif;fill:#232F3E;text-anchor:middle;}
+  .t-lblg{font:600 10px 'Inter',sans-serif;fill:#6B7480;text-anchor:middle;}
+  .t-sub{font:500 8.5px 'Inter',sans-serif;fill:#fff;opacity:.8;text-anchor:middle;}
+  .t-subd{font:500 8.5px 'Inter',sans-serif;fill:#232F3E;opacity:.75;text-anchor:middle;}
+  .zone-lbl{font:700 9px 'Inter',sans-serif;letter-spacing:.07em;}
+  .flow{font:500 8.5px 'Inter',sans-serif;fill:#545B64;}
+  .ln{stroke:#545B64;stroke-width:1.6;fill:none;}
+  .ln-o{stroke:#FF9900;stroke-width:2;fill:none;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px 26px;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:8px 0;font-size:9.4pt;break-inside:avoid;}
+  .legend .grp{min-width:160px;}
+  .legend .grp .h{font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--gray);font-weight:700;margin-bottom:7px;}
+  .legend .it{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:#33404d;}
+  .legend .chip{width:26px;height:15px;border-radius:3px;flex:none;}
+
+  .costs{width:100%;border-collapse:collapse;font-size:9.6pt;margin:8px 0;break-inside:avoid;}
+  .costs th{text-align:left;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1.5px solid var(--line);padding:6px 10px;}
+  .costs td{padding:7px 10px;border-bottom:1px solid var(--line);color:#3a4552;}
+  .costs td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;font-size:9pt;}
+  .costs tr.tot td{font-weight:700;color:var(--ink);border-bottom:none;border-top:1.5px solid var(--ink);}
+
+  @media (max-width:900px){
+    .sheet{width:auto;min-height:0;margin:0;padding:24px 16px;}
+    .cover{margin:-24px -16px 26px;padding:40px 16px 32px;}
+    .cover h1{font-size:26pt;}
+    .reqs{grid-template-columns:1fr;}
+    .svc .r,.why .row{flex-direction:column;}
+    .svc .name,.why .opt{flex:1;border-right:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#545B64"/></marker>
+  <marker id="arrow-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FF9900"/></marker>
+</defs></svg>
+
+<div class="sheet">
+<div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 04 — The Serverless API</h1>
+    <div class="sub">An HTTP API, a function and a table — with no VPC, no subnets, no security groups, no instances, and no hourly charge of any kind.</div>
+    <div class="meta">
+      <div><b>9</b>resources</div>
+      <div><b>0</b>servers</div>
+      <div><b>0</b>security groups</div>
+      <div><b>$0.00</b>per hour idle</div>
+    </div>
+  </div>
+
+  <p>Every previous lab billed by the hour whether or not anyone used it. A NAT gateway at $43 a
+  month, a load balancer at $18, a Multi-AZ database at $57 — all charging steadily for the
+  privilege of existing. This stack charges nothing until a request arrives, and that single
+  difference reshapes every architectural decision in it.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: the request/compute/storage split without servers, Lambda execution roles and the
+    initialisation phase, DynamoDB key design and why Query beats Scan, HTTP APIs versus REST APIs,
+    and the per-request cost model. Out of scope: VPC-attached Lambdas, step functions, event
+    sourcing, and provisioned concurrency.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Three managed services and no network</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>There is no network diagram here because there is no network: the components are connected
+      by IAM permissions and service integrations rather than by routes and security groups, and
+      the entire architecture scales from zero to thousands of concurrent requests without anyone
+      configuring capacity.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Accept HTTP requests on a public URL</li>
+          <li>Store and retrieve items durably</li>
+          <li>Scale to zero when unused</li>
+          <li>Show cold-start behaviour plainly</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Function may touch exactly one table, four actions</li>
+          <li>No credentials anywhere — roles only</li>
+          <li>Reads use Query, never Scan</li>
+          <li>Logs retained one day, then discarded</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>No VPC — attaching one would add cost and cold-start latency</li>
+          <li>Function code inline in the template, under 4 KB</li>
+          <li>On-demand billing on the table</li>
+          <li>Idle cost must be exactly zero</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>API Gateway HTTP API</div>
+        <div class="role">A public HTTPS endpoint with a <code>$default</code> route proxying everything to one function. <b>Why:</b> an HTTP API costs roughly 70% less than a REST API and adds less latency. REST APIs buy request validation, API keys with usage plans, WAF integration and private endpoints — none of which this needs.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>Lambda function</div>
+        <div class="role">Python 3.12, 256 MB, 10-second timeout, routing on method and path. <b>Why:</b> memory is the only performance dial — CPU and network scale with it — so 256 MB is often faster <em>and</em> cheaper than 128 MB, because the function finishes in less than half the time.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>DynamoDB table</div>
+        <div class="role">Partition key <code>pk</code>, sort key <code>sk</code>, on-demand billing. <b>Why:</b> on-demand charges per request and nothing at rest; provisioned capacity would bill around the clock. The composite key lets one Query return recent items in order without reading the whole table.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Execution role</div>
+        <div class="role">Four DynamoDB actions on one table ARN, plus the managed basic-execution policy for logs. <b>Why:</b> the function holds no credentials — it assumes this role and receives temporary keys. Removing one action from this policy is the lab's failure injection.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>Resource policy</div>
+        <div class="role">A <code>lambda:InvokeFunction</code> permission granting the API Gateway service principal access, scoped to this one API's ARN. <b>Why:</b> this is what connects the API to the function. There is no network path between them — the relationship is entirely a pair of IAM statements.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>CloudWatch log group</div>
+        <div class="role">Created explicitly with one-day retention. <b>Why:</b> Lambda creates a log group implicitly on first invocation with <em>never expire</em> retention, which quietly accumulates cost forever. Declaring it in the template is how you control that.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 400" role="img" aria-label="A serverless request path: clients call an HTTP API, which invokes a Lambda function via a resource policy, which reads and writes a DynamoDB table using an execution role, and writes logs to CloudWatch.">
+        <rect class="d-bg" x="0" y="0" width="760" height="400"/>
+
+        <rect class="tile-w" x="30" y="150" width="130" height="52" rx="5"/>
+        <text class="t-lbli" x="95" y="173">Clients</text>
+        <text class="flow" x="95" y="188" text-anchor="middle">any HTTPS caller</text>
+
+        <rect class="region" x="186" y="16" width="566" height="368" rx="8"/>
+        <text class="zone-lbl" x="198" y="36" fill="#545B64">REGION · ap-southeast-2 · NO VPC, NO SUBNETS, NO SECURITY GROUPS</text>
+
+        <rect class="tile-o" x="212" y="148" width="140" height="56" rx="4"/>
+        <text class="t-lbli" x="282" y="170">HTTP API</text>
+        <text class="t-subd" x="282" y="186">$default route</text>
+
+        <rect class="tile" x="382" y="148" width="150" height="56" rx="4"/>
+        <text class="t-lbl" x="457" y="170">Lambda</text>
+        <text class="t-sub" x="457" y="186">python3.12 · 256 MB</text>
+
+        <rect class="tile-b" x="562" y="148" width="160" height="56" rx="4"/>
+        <text class="t-lbl" x="642" y="170">DynamoDB</text>
+        <text class="t-sub" x="642" y="186">on-demand · pk + sk</text>
+
+        <rect class="tile-w" x="382" y="288" width="150" height="50" rx="5"/>
+        <text class="t-lbli" x="457" y="309">CloudWatch Logs</text>
+        <text class="flow" x="457" y="324" text-anchor="middle">1-day retention</text>
+
+        <rect class="zbox" x="212" y="60" width="510" height="0"/>
+        <text class="flow" x="212" y="80">Connected by IAM, not by network. There is no route table, no subnet and no</text>
+        <text class="flow" x="212" y="92">security group anywhere in this architecture — the arrows below are permissions.</text>
+
+        <path class="ln-o" d="M160,176 H208" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M352,176 H378" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="356" y="138">resource</text>
+        <text class="flow" x="356" y="150">policy</text>
+
+        <path class="ln" d="M532,176 H558" marker-end="url(#arrow)"/>
+        <text class="flow" x="512" y="138">execution</text>
+        <text class="flow" x="512" y="150">role</text>
+
+        <path class="ln-async" d="M457,204 V284" marker-end="url(#arrow-a)"/>
+        <text class="flow" x="464" y="245">stdout · async</text>
+
+        <text class="flow" x="212" y="240">Scales 0 → thousands</text>
+        <text class="flow" x="212" y="252">with no capacity setting.</text>
+
+        <text class="flow" x="562" y="240">Query on pk returns recent</text>
+        <text class="flow" x="562" y="252">items in order. A Scan would</text>
+        <text class="flow" x="562" y="264">read every item in the table.</text>
+
+        <text class="flow" x="212" y="360">Idle cost: $0.00/hour. Every component in this diagram bills per request.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — Compare this with Figure 01 of any earlier lab. There are no dashed network boundaries because there is no network to draw: each arrow is an IAM relationship, and nothing here charges until a request arrives.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = tier</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Entry point</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Compute</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Data store</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Managed service / caller</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style = relationship</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Request path</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Granted by an IAM role</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Asynchronous delivery</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">A client sends <code>POST /notes</code> to the API's HTTPS endpoint. TLS terminates at API Gateway; there is no certificate to manage and no listener to configure.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">The <code>$default</code> route matches. API Gateway calls <code>lambda:InvokeFunction</code>, which succeeds because the function's <b>resource policy</b> names the API Gateway service principal and this API's ARN.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd"><b>If no warm environment exists</b>, Lambda creates one: downloads the code, starts the runtime and executes everything outside the handler — including the boto3 client. This is the cold start, and it happens once per environment, not per request.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">The handler runs. It assumes the execution role automatically and receives temporary credentials; no access key exists anywhere in the code or configuration.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd"><code>PutItem</code> writes an item with partition key <code>note</code> and a timestamp-ordered sort key. DynamoDB replicates it across three availability zones before acknowledging.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">A later <code>GET /notes</code> issues a <b>Query</b> on the partition key with <code>ScanIndexForward: false</code>, returning the 25 most recent items. It reads only that partition — a Scan would read every item in the table and bill accordingly.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">Anything printed goes to CloudWatch Logs asynchronously. During the failure injection this is where the <code>AccessDeniedException</code> appears, naming the exact action and resource that was denied.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">HTTP API or REST API?</div>
+      <div class="row"><div class="opt no">REST API</div><div class="rea">The older, fuller product: request/response transformation, API keys with usage plans, per-method throttling, WAF integration, private endpoints, and caching. Roughly 3.5× the price per million requests and measurably more latency.</div></div>
+      <div class="row"><div class="opt yes">HTTP API</div><div class="rea">Chosen. Cheaper, faster, simpler, with native JWT authorisation — and everything this architecture actually uses. Reach for REST only when you need one of the features above; on the exam, API keys, usage plans and request validation all point to REST.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">How should the table be read?</div>
+      <div class="row"><div class="opt no"><code>Scan</code> with a filter expression</div><div class="rea">Reads <b>every item in the table</b> and then discards the non-matching ones — and you are billed for everything read, not for what comes back. Cost and latency grow with total table size forever.</div></div>
+      <div class="row"><div class="opt yes"><code>Query</code> on the partition key</div><div class="rea">Chosen. Reads only the matching partition, returns items already sorted by the sort key, and costs the same whether the table holds a thousand items or a billion. If your access pattern needs a different key, add a global secondary index — never reach for Scan.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">Where the cost model changes everything</span>
+      In Labs 01–03, the architectural question was "how little can I leave running?" Here it is
+      "how few requests can I serve?" — and the answer to idle is genuinely zero. That is why
+      serverless dominates exam questions containing the words <strong>unpredictable</strong>,
+      <strong>spiky</strong>, <strong>intermittent</strong> or <strong>infrequent</strong> traffic.
+      The corollary matters too: at steady high volume, provisioned capacity and EC2 become cheaper
+      again, which is why "always-on, predictable load" points back the other way.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">No long-lived credentials exist: the function assumes a role and gets temporary keys. Its policy names four actions on one table ARN rather than <code>dynamodb:*</code> on <code>*</code>. DynamoDB encrypts at rest by default. The API is public and unauthenticated — the one real weakness, and deliberate, so the URL can be opened in a browser.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">Nothing to configure. Lambda scales concurrent executions automatically to an account limit of 1,000 by default; DynamoDB on-demand absorbs traffic changes without a capacity setting. The scaling risk is the reverse of usual: a runaway loop scales <em>up</em> and bills for it, which is what reserved concurrency exists to cap.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">All three services are regional and multi-AZ by default, so there is no availability zone to lose. Realistic failures are throttling (429 when concurrency is exhausted), timeouts at 10 seconds, and IAM denials. <b>Blast radius is one function</b> — nothing else in the account is affected.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">Idle is free. Under load, the levers are memory size (more memory can cost less overall by finishing sooner), avoiding Scan, and log retention — the quiet one, since a default log group keeps data forever. Ten thousand requests through this stack costs under one cent.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~15 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Under two minutes</b> — the fastest lab by far, because nothing has to be provisioned. There is no capacity to allocate, so creation is almost entirely control-plane record-keeping.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Call the root URL twice in quick succession and compare <code>cold_start_age_seconds</code>. The first call pays the initialisation cost; the second reuses the environment and is markedly faster.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Remove <code>dynamodb:Query</code> from the execution role in the console. <code>GET /notes</code> immediately returns 500 while <code>POST /notes</code> still works — because only one action was denied. CloudWatch Logs names the action and resource exactly.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">Under a minute. <b>Strictly speaking you could leave this stack running</b> — it would cost nothing. It is destroyed anyway, for the same reason every lab is: the account returns to a known baseline.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li><code>cold_start_age_seconds</code> across repeated calls — it shows you exactly when a new execution environment was created rather than reused.</li>
+            <li>The <code>AccessDeniedException</code> message during the failure injection. It names the action, the resource and the role, and reading these fluently is a genuinely useful skill.</li>
+            <li>The absence of an entire category of thing. No subnets, no route tables, no health checks, no instances to patch — and the architecture is still highly available.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never let a Lambda log group keep its implicit default. If the function is invoked before
+          the log group is declared, Lambda creates one with <b>retention set to never expire</b>,
+          and it accumulates charges silently for the life of the account. Declaring the log group
+          in the template with an explicit retention — as this stack does — is the fix. The same
+          trap catches <code>Scan</code> on a table that was small when the code was written.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">Idle $ / hour</th><th style="text-align:right">Per 10,000 requests</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>API Gateway HTTP API</td><td class="n">0.0000</td><td class="n">0.0100</td><td>$1.00 per million</td></tr>
+        <tr><td>Lambda</td><td class="n">0.0000</td><td class="n">0.0021</td><td>Requests plus GB-seconds</td></tr>
+        <tr><td>DynamoDB on-demand</td><td class="n">0.0000</td><td class="n">0.0080</td><td>Writes cost ~5× reads</td></tr>
+        <tr><td>CloudWatch Logs</td><td class="n">0.0000</td><td class="n">0.0007</td><td>Ingestion; 1-day retention</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.0000</td><td class="n">0.0208</td><td>Two cents per 10,000 calls</td></tr>
+      </tbody>
+    </table>
+
+    <p>For comparison, Lab 01's NAT gateway alone costs <strong>$0.059 per hour serving no traffic
+    at all</strong>. This entire stack would need to handle roughly 28,000 requests an hour before
+    it matched that.</p>
+
+    <p><strong>Deliberately absent.</strong> No authentication, so the URL opens in a browser —
+    production would add a JWT authorizer or IAM authorisation. No custom domain or certificate. No
+    VPC attachment: Lambda in a VPC is only needed to reach private resources such as the Lab 03
+    database, and it adds cost and complexity without adding security here. No provisioned
+    concurrency, which fixes cold starts at the price of paying hourly — which would undo the one
+    property this lab exists to demonstrate.</p>
+
+    <div class="callout warn">
+      <span class="ct">The exam's framing</span>
+      Serverless is not automatically the right answer. It wins decisively for <strong>spiky,
+      unpredictable or infrequent</strong> workloads, and for teams who want no servers to patch.
+      It loses for sustained high-volume compute, for workloads needing more than 15 minutes per
+      execution, and for anything requiring specific hardware. Read the question for the traffic
+      pattern before choosing.
+    </div>
+  </div>
+</div>
+</body>
+</html>

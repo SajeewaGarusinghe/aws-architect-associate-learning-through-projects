@@ -8,8 +8,8 @@ Account `213104855858` · region `ap-southeast-2` · one lab at a time, destroye
 |---|---|---|---|---|---|
 | 01 | [VPC from scratch](labs/01-vpc-from-scratch/) | Deployed &amp; destroyed 2026-09-12 | 19 min | $0.0368 | D1 D2 D4 |
 | 02 | [ALB + Auto Scaling, multi-AZ](labs/02-alb-autoscaling/) | Phase A complete — ready to deploy | — | — | D1 D2 D3 D4 |
-| 03 | RDS Multi-AZ + failover test | Not started | | | D1 D2 |
-| 04 | Serverless API (API Gateway + Lambda + DynamoDB) | Not started | | | D3 D4 |
+| 03 | [RDS Multi-AZ + failover test](labs/03-rds-multi-az/) | Phase A complete — ready to deploy | — | — | D1 D2 D4 |
+| 04 | [Serverless API](labs/04-serverless-api/) | Phase A complete — ready to deploy | — | — | D1 D3 D4 |
 | 05 | Decoupling (SQS, SNS fan-out, DLQ) | Not started | | | D2 D3 |
 | 06 | Static site + CDN (S3, CloudFront, OAC) | Not started | | | D1 D4 |
 | 07 | IAM in depth | Not started | | | D1 |
