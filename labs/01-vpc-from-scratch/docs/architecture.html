@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPC From Scratch</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<style>
+  html,body{margin:0;padding:0;}
+  body{background:#5a5f66;}
+  .sheet{width:8.5in;min-height:11in;margin:24px auto;padding:0.7in;background:#fff;
+    box-shadow:0 2px 18px rgba(0,0,0,.35);box-sizing:border-box;}
+  @page{size:letter;margin:0.7in;}
+  @media print{
+    body{background:#fff;}
+    .sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;}
+  }
+
+  :root{
+    --ink:#232F3E; --slate:#37475A; --orange:#FF9900; --orange-d:#EC7211;
+    --gray:#545B64; --gray-l:#879196; --paper:#FFFFFF; --wash:#FAFAFA;
+    --line:#E3E7EB; --pub:#1B9E77; --priv:#2D72B8; --blue:#2D72B8; --purple:#8B5CF6;
+  }
+  *{box-sizing:border-box}
+  body{color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .sheet{font-size:11pt;line-height:1.6;color:#1c2430;}
+  a{color:var(--orange-d);text-decoration:none;}
+  a:hover{text-decoration:underline;color:var(--orange);}
+  p{margin:0 0 10px;}
+  strong{font-weight:600;color:var(--ink);}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.2pt;background:#EEF1F4;border:1px solid #E0E5EA;border-radius:4px;padding:1px 5px;color:#2a3542;}
+
+  .cover{background:var(--ink);color:#fff;margin:-0.7in -0.7in 26px;padding:66px 0.7in 48px;position:relative;overflow:hidden;}
+  .cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--orange);}
+  .cover::before{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.16),transparent 68%);}
+  .cover .eyebrow{font-size:11pt;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:18px;}
+  .cover h1{font-size:33pt;line-height:1.08;margin:0 0 14px;font-weight:800;letter-spacing:-.015em;max-width:16em;text-wrap:balance;}
+  .cover .sub{font-size:12.5pt;color:#c7ced6;max-width:34em;line-height:1.55;}
+  .cover .meta{margin-top:28px;display:flex;gap:30px;flex-wrap:wrap;font-size:9.5pt;color:#9aa5b1;}
+  .cover .meta b{color:#fff;font-weight:700;display:block;font-size:16pt;margin-bottom:2px;font-variant-numeric:tabular-nums;}
+
+  h2.sec{font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-d);font-weight:700;margin:0 0 4px;}
+  .p-h{font-size:16pt;font-weight:800;color:var(--ink);margin:0 0 6px;line-height:1.22;letter-spacing:-.01em;}
+  .p-h .num{color:var(--orange-d);}
+  .head-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;}
+  .head-row a{font-size:9pt;white-space:nowrap;}
+
+  .sub-lbl{display:flex;align-items:center;gap:9px;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--orange-d);margin:16px 0 9px;}
+  .sub-lbl::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,var(--orange) 0%,var(--line) 100%);}
+
+  .p{margin-bottom:26px;}
+  .lede{background:var(--wash);border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:6px;padding:14px 18px;margin-bottom:6px;break-inside:avoid;}
+  .lede .tag{display:inline-block;font-size:8pt;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--slate);padding:2px 8px;border-radius:3px;margin-bottom:9px;}
+  .lede p{margin:0;font-size:10.5pt;color:#2a3542;}
+
+  .reqs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;break-inside:avoid;}
+  .reqs .col{border:1px solid var(--line);border-radius:6px;padding:10px 13px;background:#fff;}
+  .reqs .col h4{margin:0 0 6px;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:5px;}
+  .reqs ul{margin:0;padding-left:15px;font-size:9.5pt;color:#33404d;line-height:1.5;}
+  .reqs li{margin-bottom:4px;}
+  .reqs li::marker{color:var(--orange);}
+
+  .svc{margin:6px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .svc .r{display:flex;gap:0;border-top:1px solid var(--line);font-size:9.7pt;}
+  .svc .r:first-child{border-top:none;}
+  .svc .name{flex:0 0 30%;padding:9px 13px;font-weight:700;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:flex-start;gap:7px;}
+  .svc .name .dot{width:8px;height:8px;border-radius:2px;flex:none;margin-top:5px;}
+  .svc .role{flex:1;padding:9px 13px;color:#3a4552;}
+  .svc .role b{color:var(--ink);}
+
+  .callout{border-radius:6px;padding:11px 14px;margin:12px 0;font-size:9.8pt;line-height:1.5;break-inside:avoid;}
+  .callout .ct{font-weight:700;display:block;margin-bottom:2px;font-size:9pt;letter-spacing:.03em;}
+  .callout.key{background:#F0F6FC;border:1px solid #CFE2F3;color:#1c3a52;}
+  .callout.key .ct{color:#1f6feb;}
+  .callout.tip{background:#FFF4E0;border:1px solid #FBD79A;color:#5a3d0a;}
+  .callout.tip .ct{color:var(--orange-d);}
+  .callout.warn{background:#FDECEC;border:1px solid #F5C2C2;color:#6b1d1d;}
+  .callout.warn .ct{color:#C0392B;}
+
+  .flowsteps{counter-reset:fs;margin:6px 0;}
+  .flowsteps .step{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line);break-inside:avoid;}
+  .flowsteps .step:first-child{border-top:none;}
+  .flowsteps .idx{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--orange);font-weight:800;font-size:9.5pt;display:flex;align-items:center;justify-content:center;}
+  .flowsteps .bd{flex:1;font-size:9.7pt;color:#3a4552;}
+  .flowsteps .bd b{color:var(--ink);}
+
+  .why{margin:12px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .why .cap-t{background:var(--ink);color:#fff;padding:6px 13px;font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;}
+  .why .row{display:flex;gap:0;border-top:1px solid var(--line);font-size:9.6pt;}
+  .why .opt{flex:0 0 34%;padding:8px 12px;font-weight:600;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);}
+  .why .rea{flex:1;padding:8px 12px;color:#3a4552;}
+  .why .opt.no::before{content:"\2717  ";color:#C0392B;font-weight:800;}
+  .why .opt.yes{background:#EAF7F1;}
+  .why .opt.yes::before{content:"\2713  ";color:#1B9E77;font-weight:800;}
+
+  .spine{border:1px solid var(--line);border-radius:7px;margin:16px 0 4px;overflow:hidden;break-inside:avoid;background:#fff;box-shadow:0 1px 2px rgba(35,47,62,.05);}
+  .spine .hd{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:8px 15px;font-size:8.6pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;}
+  .spine .hd .clk{margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--orange);text-transform:none;font-size:8.6pt;}
+  .spine .bd{padding:11px 15px 13px;}
+  .spine .tl{margin-bottom:11px;}
+  .spine .ph{display:flex;gap:12px;padding:6px 0;border-top:1px dashed var(--line);}
+  .spine .ph:first-child{border-top:none;padding-top:0;}
+  .spine .ph .mn{flex:0 0 64px;font-size:7.8pt;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--orange-d);padding-top:2px;}
+  .spine .ph .tx{flex:1;font-size:9.6pt;color:#33404d;line-height:1.5;}
+  .spine .ph .tx b{color:var(--ink);font-weight:600;}
+  .spine .three{background:var(--wash);border:1px solid var(--line);border-radius:5px;padding:9px 13px;margin-bottom:9px;}
+  .spine .three .lb,.spine .flag .lb{font-size:7.6pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:5px;display:block;}
+  .spine .three ol{margin:0;padding-left:16px;font-size:9.4pt;color:#2a3542;line-height:1.5;}
+  .spine .three li{margin-bottom:2px;}
+  .spine .three li::marker{color:var(--orange-d);font-weight:700;}
+  .spine .flag{font-size:9.3pt;line-height:1.45;color:#6b1d1d;background:#FDECEC;border:1px solid #F5C2C2;border-radius:5px;padding:8px 12px;}
+  .spine .flag .lb{color:#C0392B;}
+  .spine .flag b{color:#8f2a20;font-weight:600;}
+
+  figure.dg{margin:16px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;break-inside:avoid;background:#fff;}
+  figure.dg .cap{background:var(--wash);border-top:1px solid var(--line);padding:7px 14px;font-size:8.8pt;color:var(--gray);}
+  figure.dg .cap b{color:var(--orange-d);font-weight:700;}
+  figure.dg svg{display:block;width:100%;height:auto;}
+
+  .d-bg{fill:#fff;}
+  .vpc{fill:#F5F8FB;stroke:#2D72B8;stroke-width:1.5;stroke-dasharray:6 4;}
+  .region{fill:none;stroke:#545B64;stroke-width:1.4;stroke-dasharray:2 3;}
+  .az{fill:#FBFDFF;stroke:#879196;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-pub{fill:#EAF7F1;stroke:#1B9E77;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-priv{fill:#EEF4FB;stroke:#2D72B8;stroke-width:1;stroke-dasharray:4 3;}
+  .tile{fill:#232F3E;}
+  .tile-o{fill:#FF9900;}
+  .tile-b{fill:#2D72B8;}
+  .tile-g{fill:#545B64;}
+  .tile-w{fill:#fff;stroke:#232F3E;stroke-width:1.3;}
+  .t-lbl{font:600 11px 'Inter',sans-serif;fill:#fff;text-anchor:middle;}
+  .t-lbli{font:600 11px 'Inter',sans-serif;fill:#232F3E;text-anchor:middle;}
+  .t-sub{font:500 8.5px 'Inter',sans-serif;fill:#fff;opacity:.8;text-anchor:middle;}
+  .t-subd{font:500 8.5px 'Inter',sans-serif;fill:#232F3E;opacity:.75;text-anchor:middle;}
+  .zone-lbl{font:700 9px 'Inter',sans-serif;letter-spacing:.07em;}
+  .flow{font:500 8.5px 'Inter',sans-serif;fill:#545B64;}
+  .ln{stroke:#545B64;stroke-width:1.6;fill:none;}
+  .ln-o{stroke:#FF9900;stroke-width:2;fill:none;}
+  .ln-async{stroke:#8B5CF6;stroke-width:1.6;fill:none;stroke-dasharray:6 4;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px 26px;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:8px 0;font-size:9.4pt;break-inside:avoid;}
+  .legend .grp{min-width:160px;}
+  .legend .grp .h{font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--gray);font-weight:700;margin-bottom:7px;}
+  .legend .it{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:#33404d;}
+  .legend .chip{width:26px;height:15px;border-radius:3px;flex:none;}
+
+  .costs{width:100%;border-collapse:collapse;font-size:9.6pt;margin:8px 0;break-inside:avoid;}
+  .costs th{text-align:left;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1.5px solid var(--line);padding:6px 10px;}
+  .costs td{padding:7px 10px;border-bottom:1px solid var(--line);color:#3a4552;}
+  .costs td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;font-size:9pt;}
+  .costs tr.tot td{font-weight:700;color:var(--ink);border-bottom:none;border-top:1.5px solid var(--ink);}
+
+  @media (max-width:900px){
+    .sheet{width:auto;min-height:0;margin:0;padding:24px 16px;}
+    .cover{margin:-24px -16px 26px;padding:40px 16px 32px;}
+    .cover h1{font-size:26pt;}
+    .reqs{grid-template-columns:1fr;}
+    .svc .r{flex-direction:column;}
+    .svc .name{flex:1;border-right:none;border-bottom:1px solid var(--line);}
+    .why .row{flex-direction:column;}
+    .why .opt{flex:1;border-right:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#545B64"/></marker>
+  <marker id="arrow-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FF9900"/></marker>
+  <marker id="arrow-a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8B5CF6"/></marker>
+</defs></svg>
+
+<div class="sheet">
+
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 01 — VPC From Scratch</h1>
+    <div class="sub">The network substrate every later lab sits inside: two availability zones, public and private subnets, and two genuinely different ways for a private instance to reach the outside world.</div>
+    <div class="meta">
+      <div><b>2</b>availability zones</div>
+      <div><b>4</b>subnets</div>
+      <div><b>$0.116</b>per hour live</div>
+      <div><b>~20</b>minutes deployed</div>
+    </div>
+  </div>
+
+  <p>This document describes a single CloudFormation stack built for AWS Certified Solutions
+  Architect – Associate study. It is deployed into a real account, inspected in the console
+  against the diagram below, deliberately broken to observe the failure, and then destroyed.
+  Nothing here is intended to survive the session.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: VPC address planning, subnet placement, routing, the two egress paths (NAT gateway
+    and VPC endpoints), stateful versus stateless traffic filtering, and flow-log observability.
+    Out of scope: load balancing, auto scaling, and databases — those arrive in Labs 02 and 03
+    and are built on top of exactly this network.
+  </div>
+
+  <div class="p" id="arch">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> The network and its two exits</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>A subnet is not "public" or "private" because of anything on the subnet — it is public
+      only because the route table attached to it sends <code>0.0.0.0/0</code> to an internet
+      gateway. Everything else in this lab follows from that single fact.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Isolate workloads in subnets with no inbound internet path</li>
+          <li>Still let those workloads fetch patches and talk to AWS APIs</li>
+          <li>Provide an interactive shell without opening SSH</li>
+          <li>Record every accepted and rejected packet</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>No inbound security-group rule anywhere in the stack</li>
+          <li>No SSH key, no bastion host, no public IP on the instance</li>
+          <li>Management plane survives loss of the internet route</li>
+          <li>Destroyed by a single <code>delete-stack</code></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>CIDR must not overlap <code>10.0.0.0/16</code>, already in use</li>
+          <li>Region <code>ap-southeast-2</code>, account past free tier</li>
+          <li>Total spend under $0.10 for the session</li>
+          <li>Account quota: 5 VPCs, 5 Elastic IPs</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>VPC <code>10.20.0.0/16</code></div>
+        <div class="role">An isolated virtual network with 65,536 addresses, carved into four /24 subnets.
+        <b>Why:</b> the range deliberately avoids <code>10.0.0.0/16</code>, which the session host already occupies — two VPCs with overlapping CIDRs can never be peered, and that mistake is permanent without a rebuild.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Public subnets ×2</div>
+        <div class="role"><code>10.20.1.0/24</code> in AZ&nbsp;a and <code>10.20.2.0/24</code> in AZ&nbsp;b. <b>Why:</b> they hold only infrastructure that must be internet-facing. In this lab that is the NAT gateway alone; in Lab 02 it becomes the load balancer.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Private subnets ×2</div>
+        <div class="role"><code>10.20.11.0/24</code> and <code>10.20.12.0/24</code>. <b>Why:</b> workloads belong here. The <code>.11</code>/<code>.12</code> numbering leaves <code>.3</code>–<code>.10</code> free, so later tiers slot in without renumbering.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#545B64"></span>Internet Gateway</div>
+        <div class="role">A horizontally scaled, highly available VPC attachment. <b>Why:</b> it is the only component that performs one-to-one NAT between a private address and a public IPv4 address. It costs nothing and cannot be a bottleneck.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>NAT Gateway + Elastic IP</div>
+        <div class="role">Managed source NAT for outbound-only traffic, placed in public subnet&nbsp;a. <b>Why:</b> private instances need to reach the internet, but nothing on the internet may initiate a connection to them. This is the single most expensive component in the stack.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#37475A"></span>Route tables ×2</div>
+        <div class="role"><code>rt-public</code> sends <code>0.0.0.0/0</code> to the internet gateway; <code>rt-private</code> sends it to the NAT gateway and additionally carries a prefix-list route for S3. <b>Why:</b> these two rows are the entire difference between a public and a private subnet.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>VPC interface endpoints ×3</div>
+        <div class="role"><code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>, each an elastic network interface inside private subnet&nbsp;a with private DNS enabled. <b>Why:</b> they give Session Manager a path that never touches the internet, which is what lets the shell survive the failure injection below.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>S3 gateway endpoint</div>
+        <div class="role">Not a network interface at all — a prefix-list route injected into <code>rt-private</code>. <b>Why:</b> gateway endpoints are free where interface endpoints bill hourly, so S3 and DynamoDB traffic should never be paying NAT data-processing charges.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>EC2 t3.micro + IAM role</div>
+        <div class="role">Amazon Linux 2023 in private subnet&nbsp;a, no public IP, no key pair, carrying <code>AmazonSSMManagedInstanceCore</code>. <b>Why:</b> the SSM agent authenticates with the instance role and dials <em>outward</em>, so an inbound rule is never required.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Security group</div>
+        <div class="role">Zero inbound rules; egress limited to TCP 443 and 80. <b>Why:</b> security groups are <em>stateful</em> — the reply to an allowed outbound request is admitted automatically, with no matching inbound rule.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Network ACL</div>
+        <div class="role">A custom ACL on both private subnets: rule 110 allows the VPC range, 120 allows inbound TCP 1024–65535, and outbound allows everything. <b>Why:</b> NACLs are <em>stateless</em>, so rule 120 exists purely to re-admit return traffic. Deleting it breaks outbound connections even though the security group is untouched.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>VPC Flow Logs</div>
+        <div class="role">All traffic, VPC-wide, delivered to a CloudWatch log group with one-day retention. <b>Why:</b> the <code>ACCEPT</code>/<code>REJECT</code> field is the only direct evidence of which control actually dropped a packet.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 560" role="img" aria-label="Two-availability-zone VPC showing public and private subnets, an internet gateway, a NAT gateway, VPC interface endpoints, and a private EC2 instance, with the regional AWS services reached from them.">
+        <rect class="d-bg" x="0" y="0" width="760" height="560"/>
+
+        <rect class="tile-w" x="308" y="10" width="144" height="34" rx="5"/>
+        <text class="t-lbli" x="380" y="32">Internet</text>
+
+        <rect class="region" x="8" y="62" width="744" height="490" rx="8"/>
+        <text class="zone-lbl" x="20" y="80" fill="#545B64">REGION · ap-southeast-2</text>
+
+        <rect class="vpc" x="22" y="96" width="560" height="356" rx="6"/>
+        <text class="zone-lbl" x="34" y="114" fill="#2D72B8">VPC · 10.20.0.0/16</text>
+
+        <rect class="tile-g" x="250" y="124" width="112" height="32" rx="4"/>
+        <text class="t-lbl" x="306" y="144">Internet Gateway</text>
+
+        <rect class="az" x="36" y="172" width="262" height="252" rx="5"/>
+        <text class="zone-lbl" x="46" y="190" fill="#545B64">ap-southeast-2a</text>
+        <rect class="az" x="310" y="172" width="262" height="252" rx="5"/>
+        <text class="zone-lbl" x="320" y="190" fill="#545B64">ap-southeast-2b</text>
+
+        <rect class="sub-pub" x="46" y="200" width="242" height="76" rx="4"/>
+        <text class="zone-lbl" x="56" y="216" fill="#1B9E77">public · 10.20.1.0/24</text>
+        <rect class="tile-o" x="110" y="228" width="150" height="38" rx="4"/>
+        <text class="t-lbli" x="185" y="245">NAT Gateway</text>
+        <text class="t-subd" x="185" y="258">$0.059/hr + data</text>
+
+        <rect class="sub-pub" x="320" y="200" width="242" height="76" rx="4"/>
+        <text class="zone-lbl" x="330" y="216" fill="#1B9E77">public · 10.20.2.0/24</text>
+        <text class="flow" x="330" y="238">No NAT gateway here. One NAT</text>
+        <text class="flow" x="330" y="250">serves both AZs — cheaper, but</text>
+        <text class="flow" x="330" y="262">AZ-a becomes a single point of failure.</text>
+
+        <rect class="sub-priv" x="46" y="306" width="242" height="104" rx="4"/>
+        <text class="zone-lbl" x="56" y="322" fill="#2D72B8">private · 10.20.11.0/24</text>
+        <rect class="tile" x="56" y="334" width="106" height="44" rx="4"/>
+        <text class="t-lbl" x="109" y="353">EC2 t3.micro</text>
+        <text class="t-sub" x="109" y="367">no public IP</text>
+        <rect class="tile-b" x="176" y="334" width="102" height="44" rx="4"/>
+        <text class="t-lbl" x="227" y="353">VPC endpoints</text>
+        <text class="t-sub" x="227" y="367">3 × interface</text>
+        <text class="flow" x="56" y="398">ssm · ssmmessages · ec2messages</text>
+
+        <rect class="sub-priv" x="320" y="306" width="242" height="104" rx="4"/>
+        <text class="zone-lbl" x="330" y="322" fill="#2D72B8">private · 10.20.12.0/24</text>
+        <text class="flow" x="330" y="344">Empty — reserved for the multi-AZ</text>
+        <text class="flow" x="330" y="356">build in Lab 02. Egress from here</text>
+        <text class="flow" x="330" y="368">would cross to AZ-a's NAT and</text>
+        <text class="flow" x="330" y="380">incur a cross-AZ data charge.</text>
+
+        <rect class="tile-w" x="300" y="426" width="120" height="24" rx="3"/>
+        <text class="t-lbli" x="360" y="442" style="font-size:9px">rt-public → igw</text>
+        <rect class="tile-w" x="430" y="426" width="132" height="24" rx="3"/>
+        <text class="t-lbli" x="496" y="442" style="font-size:9px">rt-private → nat · s3</text>
+
+        <text class="zone-lbl" x="20" y="470" fill="#545B64">REGIONAL AWS SERVICES · OUTSIDE THE VPC</text>
+        <rect class="tile-w" x="60" y="482" width="190" height="52" rx="5"/>
+        <text class="t-lbli" x="155" y="505">AWS Systems Manager</text>
+        <text class="flow" x="155" y="519" text-anchor="middle">Session Manager control plane</text>
+        <rect class="tile-w" x="286" y="482" width="190" height="52" rx="5"/>
+        <text class="t-lbli" x="381" y="505">Amazon S3</text>
+        <text class="flow" x="381" y="519" text-anchor="middle">reached by prefix-list route</text>
+        <rect class="tile-w" x="512" y="482" width="190" height="52" rx="5"/>
+        <text class="t-lbli" x="607" y="505">CloudWatch Logs</text>
+        <text class="flow" x="607" y="519" text-anchor="middle">flow logs · ALL traffic</text>
+
+        <path class="ln" d="M306,124 V88 H380 V48" marker-end="url(#arrow)"/>
+        <text class="flow" x="312" y="84">egress via public IPv4</text>
+
+        <path class="ln-o" d="M185,228 V184 H306 V160" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="214" y="180">NAT → IGW</text>
+
+        <path class="ln-o" d="M109,334 V296 H185 V270" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="50" y="291">0.0.0.0/0 → NAT</text>
+
+        <path class="ln-o" d="M162,356 H172" marker-end="url(#arrow-o)"/>
+
+        <path class="ln" d="M227,378 V462 H155 V478" marker-end="url(#arrow)"/>
+        <text class="flow" x="232" y="474">no internet path</text>
+
+        <path class="ln" d="M496,450 V468 H381 V478" marker-end="url(#arrow)"/>
+        <text class="flow" x="404" y="464">free · no ENI</text>
+
+        <path class="ln-async" d="M576,452 V470 H607 V478" marker-end="url(#arrow-a)"/>
+        <text class="flow" x="612" y="466">async</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — The private instance has two independent ways out: the orange path through the NAT gateway for general internet traffic, and the grey path through interface endpoints for the AWS control plane. Only the orange one costs $0.059 an hour, and only the orange one breaks during the failure injection.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = tier</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Compute</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Billable edge component</div>
+        <div class="it"><span class="chip" style="background:#545B64"></span>Free edge component</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Private connectivity</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Managed service / route table</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style = path</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Internet path (billable)</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Private AWS path</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Asynchronous delivery</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">The instance runs <code>curl https://example.com</code>. Its security group permits TCP 443 outbound, so the packet leaves the elastic network interface.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">The custom network ACL evaluates the packet on the way out against its outbound rules, which allow everything. <b>The ACL is stateless, so it will evaluate the reply separately on the way back in.</b></div></div>
+      <div class="step"><div class="idx">3</div><div class="bd"><code>rt-private</code> matches <code>0.0.0.0/0</code> and forwards to the NAT gateway in public subnet&nbsp;a — a cross-subnet, same-AZ hop.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">The NAT gateway rewrites the source address to its Elastic IP and records the translation. <code>rt-public</code> matches <code>0.0.0.0/0</code> and forwards to the internet gateway.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">The reply returns to the Elastic IP. The NAT gateway reverses the translation; ACL rule 120 admits it on an ephemeral port; the security group admits it automatically because it is stateful.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd"><b>Separately and continuously:</b> the SSM agent holds an outbound connection to the three interface endpoints, resolved by private DNS to addresses inside <code>10.20.11.0/24</code>. This traffic never reaches the route table's default route, so it is unaffected by anything that happens to the NAT gateway.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">Traffic to S3 matches the prefix-list route rather than <code>0.0.0.0/0</code>, leaving through the gateway endpoint at no charge.</div></div>
+      <div class="step"><div class="idx">8</div><div class="bd">Every packet in steps 1–7 is recorded to CloudWatch Logs with an <code>ACCEPT</code> or <code>REJECT</code> verdict, asynchronously and with a few minutes' delay.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">How should the private instance reach the AWS control plane?</div>
+      <div class="row"><div class="opt no">A bastion host in a public subnet</div><div class="rea">Requires an inbound SSH rule, a key pair to distribute and rotate, and a second instance to patch. It is an internet-facing attack surface that exists only to reach machines that are not.</div></div>
+      <div class="row"><div class="opt no">Session Manager over the NAT gateway</div><div class="rea">Works, and costs nothing extra — but management traffic then depends on the same path as workload traffic. Lose the NAT gateway and you lose the shell you need to diagnose it.</div></div>
+      <div class="row"><div class="opt yes">Session Manager over interface endpoints</div><div class="rea">Chosen. Costs $0.039/hr for three endpoints, and buys an administrative path that is independent of the internet route. The failure injection demonstrates exactly this.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">How many NAT gateways?</div>
+      <div class="row"><div class="opt no">One per availability zone</div><div class="rea">The production answer. Each AZ's private subnets egress through their own NAT, so an AZ failure is contained and no cross-AZ data charges accrue. It doubles the hourly cost.</div></div>
+      <div class="row"><div class="opt yes">One, in AZ&nbsp;a</div><div class="rea">Chosen for this lab. Halves the cost and makes the trade-off visible: AZ&nbsp;a is now a single point of failure for <em>both</em> private subnets, and any egress from AZ&nbsp;b pays a cross-AZ transfer charge.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">The distinction the exam keeps testing</span>
+      A security group is <strong>stateful</strong>: allow a request out and the reply is admitted
+      automatically. A network ACL is <strong>stateless</strong>: it evaluates every packet in each
+      direction independently, so the reply needs its own inbound rule on the ephemeral port range
+      1024–65535. That is the only reason ACL rule 120 exists. If a question describes outbound
+      connections that hang or time out while the security group is clearly correct, the missing
+      ephemeral-port ACL rule is almost always the answer.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">No inbound rule exists anywhere in the stack and the instance has no public address, so it is unreachable from the internet by construction rather than by policy. Access is authenticated through IAM and logged to CloudTrail, not through a shared key.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">The internet gateway and NAT gateway scale automatically — NAT to 100 Gbps. The real constraint is address space: a /24 yields 251 usable addresses, because AWS reserves five in every subnet.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">Losing AZ&nbsp;a removes outbound internet for <em>both</em> private subnets, and removes the interface endpoints too, since all three live in one subnet. Blast radius is the whole stack — an accepted consequence of optimising a teaching lab for cost.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">The NAT gateway is 51% of the hourly cost and bills for data processed on top. Routing S3 and DynamoDB through free gateway endpoints is the first optimisation; replacing NAT with interface endpoints for specific services is the second; deleting the stack is the third and the one this lab actually uses.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Roughly three minutes</b>, nearly all of it the NAT gateway and the three interface endpoints. The EC2 instance reaches <code>running</code> well before Session Manager will accept a connection — the agent needs the endpoints to exist first.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Work through the console tour against this diagram. The VPC resource map is the fastest way to confirm subnet-to-route-table associations are what the template intended.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Delete the <code>0.0.0.0/0</code> route from <code>rt-private</code>. Outbound internet from the instance stops immediately; <b>the Session Manager shell stays connected</b>, because that traffic never used the route. Restore the route and internet returns without touching the instance.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">One <code>delete-stack</code>, then a tag sweep to prove the NAT gateway and Elastic IP are actually gone rather than merely detached.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>The route tables — which subnet is associated with which, and what the single <code>0.0.0.0/0</code> row points at in each.</li>
+            <li>The NAT gateway's Elastic IP, then the source address the instance reports from <code>curl ifconfig.me</code>. They are the same address, and that is the whole point of NAT.</li>
+            <li>The flow logs after the failure injection — the <code>REJECT</code> records name the traffic that the missing route stranded.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never leave a NAT gateway running after a lab. It bills <b>$0.059 every hour whether or not
+          a single packet crosses it</b>, which is about <b>$43 a month</b> for an idle resource, and
+          it is the most common way a personal AWS account quietly accumulates a bill. The Elastic IP
+          keeps charging too. This is precisely why teardown is verified by tag sweep rather than
+          trusted to <code>DELETE_COMPLETE</code>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / hour</th><th style="text-align:right">20 minutes</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>NAT Gateway</td><td class="n">0.0590</td><td class="n">0.0197</td><td>Plus $0.0059 per GB processed</td></tr>
+        <tr><td>Interface endpoints ×3</td><td class="n">0.0390</td><td class="n">0.0130</td><td>$0.013 per endpoint per AZ</td></tr>
+        <tr><td>EC2 t3.micro</td><td class="n">0.0132</td><td class="n">0.0044</td><td>On-demand, Linux</td></tr>
+        <tr><td>Elastic IP (in use)</td><td class="n">0.0050</td><td class="n">0.0017</td><td>All public IPv4 now bills</td></tr>
+        <tr><td>VPC, subnets, IGW, route tables, security group, NACL, IAM, S3 gateway endpoint</td><td class="n">0.0000</td><td class="n">0.0000</td><td>No hourly charge</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.1162</td><td class="n">0.0388</td><td>Under four cents</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> There is no load balancer, no auto scaling group, no
+    database, and no second NAT gateway. Each is a cost this lab does not need to make its point,
+    and each arrives in a later lab where it is the subject rather than scenery. The private subnet
+    in AZ&nbsp;b is left empty on purpose — Lab 02 fills it, and the contrast between a
+    single-AZ and a genuinely multi-AZ deployment is easier to feel when you have built both.</p>
+
+    <div class="callout warn">
+      <span class="ct">Verification, not assumption</span>
+      CloudFormation reporting <code>DELETE_COMPLETE</code> means the stack record is gone. It is not
+      independent evidence that no billable resource survived — a NAT gateway can sit in
+      <code>deleting</code> for minutes, and a released Elastic IP that was never associated still
+      appears in the account. Teardown therefore re-queries EC2 by tag and fails loudly if anything
+      answers.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
