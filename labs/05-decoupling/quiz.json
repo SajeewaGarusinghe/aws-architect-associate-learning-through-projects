@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 05",
+  "title": "Decoupling Exam Drill",
+  "intro": "Twelve scenario questions on SQS, SNS, dead-letter queues and asynchronous design. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 05 — Decoupling with queues. Reference notes: exam-notes.md",
+  "notes_title": "Lab 05 (Decoupling)",
+  "notes_intro": "Twelve SAA-C03-style questions on queues, topics and asynchronous failure handling, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "An order service must notify three separate downstream systems whenever an order is placed. Each system must receive every order and process it independently at its own pace. What is the appropriate design?",
+      "options": [
+        "One SQS queue that all three systems poll",
+        "An SNS topic with three subscribed SQS queues, one per system",
+        "Three Lambda functions invoked directly by the order service",
+        "An SNS topic with all three systems subscribed by HTTP endpoint"
+      ],
+      "answer": 1,
+      "why": "A standard SQS queue delivers each message to <strong>one</strong> consumer — three systems polling one queue would <em>split</em> the orders, not each receive a copy. SNS fan-out to one queue per subscriber gives each system its own buffer, retries and dead-letter behaviour. HTTP subscribers would receive the message but get no queue, so an outage loses it."
+    },
+    {
+      "q": "A Lambda function consuming from SQS has a 60-second timeout. The queue's visibility timeout is 30 seconds. What is the likely consequence?",
+      "options": [
+        "Messages are deleted before processing completes",
+        "The same message is delivered to a second invocation while the first is still running",
+        "The function is throttled to match the visibility timeout",
+        "Messages go straight to the dead-letter queue"
+      ],
+      "answer": 1,
+      "why": "The message becomes visible again after 30 seconds — <strong>while the first invocation is still working</strong> — so a second consumer picks it up and the work happens twice, with no error anywhere to reveal it. The rule is <strong>visibility timeout ≥ function timeout</strong>, conventionally six times it."
+    },
+    {
+      "q": "A message in an SQS queue cannot be processed successfully — it fails every time. Without a dead-letter queue configured, what happens?",
+      "options": [
+        "SQS deletes it after three attempts",
+        "It is retried until the message retention period expires, up to 14 days",
+        "It blocks the queue permanently and no other message is processed",
+        "It is moved to a hidden quarantine queue automatically"
+      ],
+      "answer": 1,
+      "why": "Without a redrive policy the message keeps returning to the queue until <strong>message retention</strong> expires — default 4 days, maximum 14. It consumes invocations and fills logs the whole time. With a small batch size it can also delay messages behind it, though it does not block the queue permanently."
+    },
+    {
+      "q": "An SNS topic has two SQS subscribers. One should receive only messages where a `priority` attribute equals `high`. What is the most efficient way to achieve this?",
+      "options": [
+        "Filter inside the consumer and discard unwanted messages",
+        "Apply a filter policy to that subscription",
+        "Create a second topic and publish to both",
+        "Use a FIFO topic with message group IDs"
+      ],
+      "answer": 1,
+      "why": "A <strong>filter policy</strong> is evaluated at SNS, so non-matching messages are never delivered to that queue and the consumer is never invoked for them — cheaper and simpler than filtering in code. Filtering in the consumer means paying to receive and discard. A second topic makes the publisher aware of the routing again."
+    },
+    {
+      "q": "What delivery guarantee does a standard SQS queue provide?",
+      "options": [
+        "Exactly once, in the order sent",
+        "At least once, with best-effort ordering",
+        "At most once, with guaranteed ordering",
+        "Exactly once, with no ordering guarantee"
+      ],
+      "answer": 1,
+      "why": "Standard queues guarantee <strong>at least once</strong> delivery with best-effort ordering — a message can be delivered more than once and out of order. Consumers must therefore be <strong>idempotent</strong>. FIFO queues provide exactly-once processing and strict ordering, at much lower throughput."
+    },
+    {
+      "q": "An application must process financial transactions in the exact order submitted, with no duplicates. Which service configuration is appropriate?",
+      "options": [
+        "A standard SQS queue with a Lambda consumer",
+        "An SQS FIFO queue with message group IDs",
+        "An SNS standard topic with an SQS subscriber",
+        "A standard queue with a 0-second visibility timeout"
+      ],
+      "answer": 1,
+      "why": "<strong>FIFO queues</strong> give strict ordering within a message group and exactly-once processing inside a 5-minute deduplication window. The cost is throughput — 300 messages/second, or 3,000 with batching, versus effectively unlimited for standard. Order is preserved <em>per message group</em>, so the group ID choice determines how much parallelism remains."
+    },
+    {
+      "q": "A Lambda function consuming SQS catches all exceptions and returns normally, logging failures. Messages that fail are never retried and never reach the dead-letter queue. Why?",
+      "options": [
+        "The DLQ redrive policy is misconfigured",
+        "Returning without raising tells Lambda the batch succeeded, so the messages are deleted",
+        "Lambda only retries on timeout, not on exceptions",
+        "The visibility timeout is too short"
+      ],
+      "answer": 1,
+      "why": "Lambda's managed poller deletes messages when the handler <strong>returns without raising</strong>. Swallowing the exception is therefore indistinguishable from success: the data is silently discarded, the queue looks healthy, and the DLQ stays empty. Failure must propagate as a raised exception — or be reported via batch item failures for partial batches."
+    },
+    {
+      "q": "A queue receives a large burst of messages, and the Lambda consumer scales up to hundreds of concurrent executions, overwhelming a downstream database. What is the appropriate control?",
+      "options": [
+        "Reduce the queue's message retention period",
+        "Set reserved concurrency on the consuming function",
+        "Increase the visibility timeout",
+        "Switch the queue to FIFO"
+      ],
+      "answer": 1,
+      "why": "<strong>Reserved concurrency</strong> caps how many instances of the function may run at once, so the queue absorbs the burst while the database sees a bounded rate — which is exactly the buffering a queue exists to provide. Retention and visibility timeout do not limit concurrency. FIFO would serialise things but for the wrong reason and at a heavy throughput cost."
+    },
+    {
+      "q": "What is the main cost benefit of long polling on an SQS queue?",
+      "options": [
+        "It reduces the per-message storage charge",
+        "It reduces the number of empty ReceiveMessage responses, which are billable requests",
+        "It compresses messages in transit",
+        "It allows a larger batch size"
+      ],
+      "answer": 1,
+      "why": "Short polling returns immediately even when the queue is empty, and <strong>every empty receive is a billable request</strong>. Long polling — <code>ReceiveMessageWaitTimeSeconds</code> up to 20 — waits for a message to arrive, cutting empty receives dramatically. It also reduces latency, since the message is returned the moment it lands."
+    },
+    {
+      "q": "An SNS topic delivers to an HTTP endpoint that is down for an hour. What happens to messages published during that window, with no dead-letter queue configured on the subscription?",
+      "options": [
+        "They are queued in SNS and delivered when the endpoint recovers",
+        "They are retried according to the delivery policy and then discarded",
+        "They are stored for 14 days like SQS messages",
+        "Publishing fails and the publisher receives an error"
+      ],
+      "answer": 1,
+      "why": "<strong>SNS is push-based and does not store messages indefinitely.</strong> It retries per the delivery policy and then drops them unless the subscription has a dead-letter queue. This is precisely why the SNS-to-SQS pattern exists: the queue provides the durable buffer that a raw HTTP subscription does not."
+    },
+    {
+      "q": "What does a redrive policy with `maxReceiveCount` set to 3 actually count?",
+      "options": [
+        "The number of seconds a message may remain invisible",
+        "The number of times a message has been received before being moved to the DLQ",
+        "The number of consumers permitted to read the queue",
+        "The number of retries per second allowed"
+      ],
+      "answer": 1,
+      "why": "It counts <strong>receives</strong>, tracked as <code>ApproximateReceiveCount</code> on each message. When a message has been received more than <code>maxReceiveCount</code> times without being deleted, SQS moves it to the dead-letter queue instead of making it visible again. The interval between attempts is the visibility timeout, not a backoff setting."
+    },
+    {
+      "q": "A workload needs to route events to different targets based on the content of the event, with rules that change frequently and may match on many fields. Which service fits best?",
+      "options": [
+        "SNS with filter policies",
+        "Amazon EventBridge",
+        "SQS with multiple queues",
+        "Step Functions"
+      ],
+      "answer": 1,
+      "why": "<strong>EventBridge</strong> is the event bus built for content-based routing: rich rule patterns over the event body, many target types, schema registry, and third-party SaaS sources. SNS filter policies work on message <em>attributes</em> and suit simpler cases. Step Functions orchestrate multi-step workflows rather than route events."
+    }
+  ]
+}

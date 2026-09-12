@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Governance And Cost</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<style>
+  html,body{margin:0;padding:0;}
+  body{background:#5a5f66;}
+  .sheet{width:8.5in;min-height:11in;margin:24px auto;padding:0.7in;background:#fff;
+    box-shadow:0 2px 18px rgba(0,0,0,.35);box-sizing:border-box;}
+  @page{size:letter;margin:0.7in;}
+  @media print{ body{background:#fff;} .sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;} }
+
+  :root{
+    --ink:#232F3E; --slate:#37475A; --orange:#FF9900; --orange-d:#EC7211;
+    --gray:#545B64; --gray-l:#879196; --wash:#FAFAFA; --line:#E3E7EB;
+    --blue:#2D72B8; --purple:#8B5CF6;
+  }
+  *{box-sizing:border-box}
+  body{color:var(--ink);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;}
+  .sheet{font-size:11pt;line-height:1.6;color:#1c2430;}
+  p{margin:0 0 10px;}
+  strong{font-weight:600;color:var(--ink);}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.2pt;background:#EEF1F4;border:1px solid #E0E5EA;border-radius:4px;padding:1px 5px;color:#2a3542;}
+
+  .cover{background:var(--ink);color:#fff;margin:-0.7in -0.7in 26px;padding:66px 0.7in 48px;position:relative;overflow:hidden;}
+  .cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--orange);}
+  .cover::before{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.16),transparent 68%);}
+  .cover .eyebrow{font-size:11pt;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:18px;}
+  .cover h1{font-size:33pt;line-height:1.08;margin:0 0 14px;font-weight:800;letter-spacing:-.015em;max-width:16em;text-wrap:balance;}
+  .cover .sub{font-size:12.5pt;color:#c7ced6;max-width:34em;line-height:1.55;}
+  .cover .meta{margin-top:28px;display:flex;gap:30px;flex-wrap:wrap;font-size:9.5pt;color:#9aa5b1;}
+  .cover .meta b{color:#fff;font-weight:700;display:block;font-size:16pt;margin-bottom:2px;font-variant-numeric:tabular-nums;}
+
+  h2.sec{font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-d);font-weight:700;margin:0 0 4px;}
+  .p-h{font-size:16pt;font-weight:800;color:var(--ink);margin:0 0 6px;line-height:1.22;letter-spacing:-.01em;}
+  .p-h .num{color:var(--orange-d);}
+  .head-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;}
+
+  .sub-lbl{display:flex;align-items:center;gap:9px;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--orange-d);margin:16px 0 9px;}
+  .sub-lbl::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,var(--orange) 0%,var(--line) 100%);}
+
+  .p{margin-bottom:26px;}
+  .lede{background:var(--wash);border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:6px;padding:14px 18px;margin-bottom:6px;break-inside:avoid;}
+  .lede .tag{display:inline-block;font-size:8pt;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--slate);padding:2px 8px;border-radius:3px;margin-bottom:9px;}
+  .lede p{margin:0;font-size:10.5pt;color:#2a3542;}
+
+  .reqs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;break-inside:avoid;}
+  .reqs .col{border:1px solid var(--line);border-radius:6px;padding:10px 13px;background:#fff;}
+  .reqs .col h4{margin:0 0 6px;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:5px;}
+  .reqs ul{margin:0;padding-left:15px;font-size:9.5pt;color:#33404d;line-height:1.5;}
+  .reqs li{margin-bottom:4px;}
+  .reqs li::marker{color:var(--orange);}
+
+  .svc{margin:6px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .svc .r{display:flex;border-top:1px solid var(--line);font-size:9.7pt;}
+  .svc .r:first-child{border-top:none;}
+  .svc .name{flex:0 0 30%;padding:9px 13px;font-weight:700;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:flex-start;gap:7px;}
+  .svc .name .dot{width:8px;height:8px;border-radius:2px;flex:none;margin-top:5px;}
+  .svc .role{flex:1;padding:9px 13px;color:#3a4552;}
+  .svc .role b{color:var(--ink);}
+
+  .callout{border-radius:6px;padding:11px 14px;margin:12px 0;font-size:9.8pt;line-height:1.5;break-inside:avoid;}
+  .callout .ct{font-weight:700;display:block;margin-bottom:2px;font-size:9pt;letter-spacing:.03em;}
+  .callout.key{background:#F0F6FC;border:1px solid #CFE2F3;color:#1c3a52;}
+  .callout.key .ct{color:#1f6feb;}
+  .callout.tip{background:#FFF4E0;border:1px solid #FBD79A;color:#5a3d0a;}
+  .callout.tip .ct{color:var(--orange-d);}
+  .callout.warn{background:#FDECEC;border:1px solid #F5C2C2;color:#6b1d1d;}
+  .callout.warn .ct{color:#C0392B;}
+
+  .flowsteps{margin:6px 0;}
+  .flowsteps .step{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line);break-inside:avoid;}
+  .flowsteps .step:first-child{border-top:none;}
+  .flowsteps .idx{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--orange);font-weight:800;font-size:9.5pt;display:flex;align-items:center;justify-content:center;}
+  .flowsteps .bd{flex:1;font-size:9.7pt;color:#3a4552;}
+  .flowsteps .bd b{color:var(--ink);}
+
+  .why{margin:12px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .why .cap-t{background:var(--ink);color:#fff;padding:6px 13px;font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;}
+  .why .row{display:flex;border-top:1px solid var(--line);font-size:9.6pt;}
+  .why .opt{flex:0 0 34%;padding:8px 12px;font-weight:600;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);}
+  .why .rea{flex:1;padding:8px 12px;color:#3a4552;}
+  .why .opt.no::before{content:"\2717  ";color:#C0392B;font-weight:800;}
+  .why .opt.yes{background:#EAF7F1;}
+  .why .opt.yes::before{content:"\2713  ";color:#1B9E77;font-weight:800;}
+
+  .spine{border:1px solid var(--line);border-radius:7px;margin:16px 0 4px;overflow:hidden;break-inside:avoid;background:#fff;box-shadow:0 1px 2px rgba(35,47,62,.05);}
+  .spine .hd{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:8px 15px;font-size:8.6pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;}
+  .spine .hd .clk{margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--orange);text-transform:none;}
+  .spine .bd{padding:11px 15px 13px;}
+  .spine .tl{margin-bottom:11px;}
+  .spine .ph{display:flex;gap:12px;padding:6px 0;border-top:1px dashed var(--line);}
+  .spine .ph:first-child{border-top:none;padding-top:0;}
+  .spine .ph .mn{flex:0 0 64px;font-size:7.8pt;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--orange-d);padding-top:2px;}
+  .spine .ph .tx{flex:1;font-size:9.6pt;color:#33404d;line-height:1.5;}
+  .spine .ph .tx b{color:var(--ink);font-weight:600;}
+  .spine .three{background:var(--wash);border:1px solid var(--line);border-radius:5px;padding:9px 13px;margin-bottom:9px;}
+  .spine .three .lb,.spine .flag .lb{font-size:7.6pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:5px;display:block;}
+  .spine .three ol{margin:0;padding-left:16px;font-size:9.4pt;color:#2a3542;line-height:1.5;}
+  .spine .three li{margin-bottom:2px;}
+  .spine .three li::marker{color:var(--orange-d);font-weight:700;}
+  .spine .flag{font-size:9.3pt;line-height:1.45;color:#6b1d1d;background:#FDECEC;border:1px solid #F5C2C2;border-radius:5px;padding:8px 12px;}
+  .spine .flag .lb{color:#C0392B;}
+  .spine .flag b{color:#8f2a20;font-weight:600;}
+
+  figure.dg{margin:16px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;break-inside:avoid;background:#fff;}
+  figure.dg .cap{background:var(--wash);border-top:1px solid var(--line);padding:7px 14px;font-size:8.8pt;color:var(--gray);}
+  figure.dg .cap b{color:var(--orange-d);font-weight:700;}
+  figure.dg svg{display:block;width:100%;height:auto;}
+
+  .d-bg{fill:#fff;}
+  .vpc{fill:#F5F8FB;stroke:#2D72B8;stroke-width:1.5;stroke-dasharray:6 4;}
+  .region{fill:none;stroke:#545B64;stroke-width:1.4;stroke-dasharray:2 3;}
+  .az{fill:#FBFDFF;stroke:#879196;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-pub{fill:#EAF7F1;stroke:#1B9E77;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-priv{fill:#EEF4FB;stroke:#2D72B8;stroke-width:1;stroke-dasharray:4 3;}
+  .asg{fill:none;stroke:#8B5CF6;stroke-width:1.5;stroke-dasharray:7 4;}
+  .tile{fill:#232F3E;}
+  .tile-o{fill:#FF9900;}
+  .tile-g{fill:#545B64;}
+  .tile-w{fill:#fff;stroke:#232F3E;stroke-width:1.3;}
+  .tile-b{fill:#2D72B8;}
+  .tile-p{fill:#8B5CF6;}
+  .tile-grn{fill:#1B9E77;}
+  .zbox{fill:#FAFBFC;stroke:#C7D0D8;stroke-width:1;stroke-dasharray:4 3;}
+  .tile-ghost{fill:#F4F6F8;stroke:#A9B4BF;stroke-width:1.2;stroke-dasharray:5 4;}
+  .t-lbl{font:600 11px 'Inter',sans-serif;fill:#fff;text-anchor:middle;}
+  .t-lbli{font:600 11px 'Inter',sans-serif;fill:#232F3E;text-anchor:middle;}
+  .t-lblg{font:600 10px 'Inter',sans-serif;fill:#6B7480;text-anchor:middle;}
+  .t-sub{font:500 8.5px 'Inter',sans-serif;fill:#fff;opacity:.8;text-anchor:middle;}
+  .t-subd{font:500 8.5px 'Inter',sans-serif;fill:#232F3E;opacity:.75;text-anchor:middle;}
+  .zone-lbl{font:700 9px 'Inter',sans-serif;letter-spacing:.07em;}
+  .flow{font:500 8.5px 'Inter',sans-serif;fill:#545B64;}
+  .ln{stroke:#545B64;stroke-width:1.6;fill:none;}
+  .ln-o{stroke:#FF9900;stroke-width:2;fill:none;}
+  .ln-async{stroke:#8B5CF6;stroke-width:1.6;fill:none;stroke-dasharray:6 4;}
+  .flow-a{font:500 8.5px 'Inter',sans-serif;fill:#8B5CF6;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px 26px;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:8px 0;font-size:9.4pt;break-inside:avoid;}
+  .legend .grp{min-width:160px;}
+  .legend .grp .h{font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--gray);font-weight:700;margin-bottom:7px;}
+  .legend .it{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:#33404d;}
+  .legend .chip{width:26px;height:15px;border-radius:3px;flex:none;}
+
+  .costs{width:100%;border-collapse:collapse;font-size:9.6pt;margin:8px 0;break-inside:avoid;}
+  .costs th{text-align:left;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1.5px solid var(--line);padding:6px 10px;}
+  .costs td{padding:7px 10px;border-bottom:1px solid var(--line);color:#3a4552;}
+  .costs td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;font-size:9pt;}
+  .costs tr.tot td{font-weight:700;color:var(--ink);border-bottom:none;border-top:1.5px solid var(--ink);}
+
+  @media (max-width:900px){
+    .sheet{width:auto;min-height:0;margin:0;padding:24px 16px;}
+    .cover{margin:-24px -16px 26px;padding:40px 16px 32px;}
+    .cover h1{font-size:26pt;}
+    .reqs{grid-template-columns:1fr;}
+    .svc .r,.why .row{flex-direction:column;}
+    .svc .name,.why .opt{flex:1;border-right:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#545B64"/></marker>
+  <marker id="arrow-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FF9900"/></marker>
+  <marker id="arrow-a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8B5CF6"/></marker>
+</defs></svg>
+
+<div class="sheet">
+<div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 10 — Who Did It, And What It Cost</h1>
+    <div class="sub">A trail that records every API call this curriculum made, a recorder that judges resources against rules, and a budget that would have caught anything the teardowns missed.</div>
+    <div class="meta">
+      <div><b>3</b>governance services</div>
+      <div><b>2</b>Config rules</div>
+      <div><b>$5</b>budget ceiling</div>
+      <div><b>~$0.01</b>total</div>
+    </div>
+  </div>
+
+  <p>Nine labs have been created and destroyed in this account. This one turns on the services that
+  would have told you about it — and then reads back the record of everything the earlier labs did.
+  It is the only lab whose value comes from the history that already exists.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: CloudTrail versus Config and what each actually answers, log file validation, Config
+    rules and compliance, and budgets with actual versus forecasted alerts. Out of scope: Cost
+    Explorer (not enabled on this account), Organizations and consolidated billing, Savings Plans,
+    and Trusted Advisor.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Three services, three different questions</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>CloudTrail answers <em>who did this and when</em>, Config answers <em>what does this look
+      like now and is that allowed</em>, and a budget answers <em>is this going to cost more than I
+      agreed to</em> — they are constantly confused with each other, and the exam relies on that.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Record every management API call in every region</li>
+          <li>Prove the log has not been altered</li>
+          <li>Flag a public bucket or an open SSH port</li>
+          <li>Warn before spend exceeds a threshold</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Multi-region, or it misses calls made elsewhere</li>
+          <li>Config scoped to a few resource types, not all</li>
+          <li>Alerts on forecast, not only on actual</li>
+          <li>Alert address never committed to a public repo</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>Cost Explorer is not enabled on this account</li>
+          <li>Config bills per configuration item recorded</li>
+          <li>Log retention one day — this is a lab</li>
+          <li>Budget requires a confirmed email</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>CloudTrail trail</div>
+        <div class="role">Multi-region, global service events included, log file validation on. <b>Why:</b> a single-region trail silently misses everything done elsewhere. Validation writes digest files so tampering is detectable — the difference between a log and evidence.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Audit bucket</div>
+        <div class="role">One bucket serving both services, each under its own prefix, all public access blocked, objects expiring after a day. <b>Why:</b> both services need explicit bucket policy statements naming their service principals — neither can write without them, and that is the usual cause of a trail that silently records nothing.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>Config recorder</div>
+        <div class="role">Scoped to four resource types rather than everything. <b>Why:</b> Config bills <b>per configuration item recorded</b>. <code>AllSupported: true</code> in a busy account is a genuinely common and unexpected bill, and scoping is the lever.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Two managed rules</div>
+        <div class="role"><code>S3_BUCKET_PUBLIC_READ_PROHIBITED</code> and <code>INCOMING_SSH_DISABLED</code>. <b>Why:</b> AWS writes and maintains the evaluation logic. Custom rules run your own Lambda and cost more to build and operate — reach for managed rules first.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Monthly budget</div>
+        <div class="role">$5 ceiling with two notifications. <b>Why:</b> <b>ACTUAL at 50%</b> fires after the money is spent; <b>FORECASTED at 100%</b> fires before it is, based on projected trend. The forecast alert is the one that actually prevents a surprise.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>Parameter file</div>
+        <div class="role">The alert email lives in <code>infra/params.json</code>, which is gitignored. <b>Why:</b> this repository is public. A budget alert address is not a secret, but committing a personal email to a public repo is a habit worth not forming.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 420" role="img" aria-label="CloudTrail and AWS Config both writing to an audit bucket, Config evaluating rules for compliance, and a budget sending actual and forecasted alerts by email.">
+        <rect class="d-bg" x="0" y="0" width="760" height="420"/>
+
+        <rect class="region" x="8" y="16" width="744" height="388" rx="8"/>
+        <text class="zone-lbl" x="20" y="36" fill="#545B64">ACCOUNT-WIDE · THE TRAIL IS MULTI-REGION</text>
+
+        <rect class="zbox" x="26" y="56" width="196" height="120" rx="6"/>
+        <text class="zone-lbl" x="36" y="76" fill="#545B64">EVERY API CALL</text>
+        <text class="flow" x="36" y="98">CreateStack</text>
+        <text class="flow" x="36" y="112">RunInstances</text>
+        <text class="flow" x="36" y="126">DeleteStack</text>
+        <text class="flow" x="36" y="140">PutBucketPolicy</text>
+        <text class="flow" x="36" y="158">…from labs 01–09</text>
+
+        <rect class="tile-o" x="266" y="74" width="170" height="52" rx="4"/>
+        <text class="t-lbli" x="351" y="96">CloudTrail</text>
+        <text class="t-subd" x="351" y="111">who · when · from where</text>
+
+        <rect class="tile-p" x="266" y="214" width="170" height="52" rx="4"/>
+        <text class="t-lbl" x="351" y="236">AWS Config</text>
+        <text class="t-sub" x="351" y="251">what it looks like now</text>
+
+        <rect class="tile-b" x="516" y="140" width="200" height="56" rx="4"/>
+        <text class="t-lbl" x="616" y="163">Audit bucket</text>
+        <text class="t-sub" x="616" y="179">both write here, own prefixes</text>
+
+        <rect class="tile" x="516" y="238" width="200" height="56" rx="4"/>
+        <text class="t-lbl" x="616" y="261">Compliance</text>
+        <text class="t-sub" x="616" y="277">2 managed rules · pass or fail</text>
+
+        <rect class="tile-grn" x="266" y="320" width="170" height="52" rx="4"/>
+        <text class="t-lbl" x="351" y="342">Budget · $5</text>
+        <text class="t-sub" x="351" y="357">actual 50% · forecast 100%</text>
+
+        <rect class="tile-w" x="516" y="320" width="200" height="52" rx="5"/>
+        <text class="t-lbli" x="616" y="342">Email alert</text>
+        <text class="flow" x="616" y="357" text-anchor="middle">forecast fires before you spend</text>
+
+        <path class="ln-o" d="M222,112 H262" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M436,104 H480 V162 H512" marker-end="url(#arrow-o)"/>
+        <path class="ln" d="M436,232 H480 V180 H512" marker-end="url(#arrow)"/>
+        <path class="ln" d="M436,250 H480 V262 H512" marker-end="url(#arrow)"/>
+        <path class="ln-async" d="M436,346 H512" marker-end="url(#arrow-a)"/>
+
+        <text class="flow" x="26" y="214">CloudTrail is a ledger:</text>
+        <text class="flow" x="26" y="226">an append-only record of</text>
+        <text class="flow" x="26" y="238">actions, with validation</text>
+        <text class="flow" x="26" y="250">digests proving nobody</text>
+        <text class="flow" x="26" y="262">edited it.</text>
+
+        <text class="flow" x="26" y="296">Config is an inventory:</text>
+        <text class="flow" x="26" y="308">the current shape of each</text>
+        <text class="flow" x="26" y="320">resource, judged against</text>
+        <text class="flow" x="26" y="332">rules, with history.</text>
+
+        <text class="flow" x="26" y="366">Confusing the two is one</text>
+        <text class="flow" x="26" y="378">of the exam's reliable traps.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — Both services write to the same bucket and answer completely different questions. CloudTrail records the <em>action</em>; Config records the <em>state</em> that resulted. "Who opened this security group" is CloudTrail; "which security groups are open right now" is Config.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = role</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Activity record</div>
+        <div class="it"><span class="chip" style="background:#8B5CF6"></span>State inventory</div>
+        <div class="it"><span class="chip" style="background:#1B9E77"></span>Spend control</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Storage / findings</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Notification</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Events recorded</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>State and evaluation</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Alert</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">Every management API call in the account — from the console, the CLI, or CloudFormation — is captured by CloudTrail, in every region because the trail is multi-region.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">Events are written to the audit bucket under <code>AWSLogs/</code>, and digest files are written alongside so any later alteration is detectable.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd"><b>Independently</b>, the last 90 days of events are queryable with <code>lookup-events</code> without reading the bucket at all — which is how you answer "who deleted that" in seconds.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">Config records a <b>configuration item</b> whenever one of the four watched resource types is created, changed or deleted — a point-in-time snapshot of that resource's settings.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">Each change triggers evaluation against the two rules. Results appear as <code>COMPLIANT</code> or <code>NON_COMPLIANT</code> per resource.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">Meanwhile the budget tracks spend. At 50% of $5 <b>actual</b>, an email is sent. Separately, if the month's <b>forecast</b> exceeds $5, an email is sent before the money is spent.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">The subscription must be confirmed from the inbox before any alert is delivered — an unconfirmed budget alert is silently useless.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">Which service answers "why is this bucket public?"</div>
+      <div class="row"><div class="opt no">CloudTrail alone</div><div class="rea">Tells you <em>who</em> called <code>PutBucketPolicy</code> and when — but you must already suspect the bucket, and you must search. It cannot tell you which buckets are public right now.</div></div>
+      <div class="row"><div class="opt no">Config alone</div><div class="rea">Tells you the bucket is non-compliant now, and shows its configuration history — but not which principal made the change or from which IP.</div></div>
+      <div class="row"><div class="opt yes">Both, and they are complementary</div><div class="rea">Chosen. Config finds it; CloudTrail explains it. The exam habitually offers one when the question needs the other — read for whether it asks about <em>state</em> or about <em>an action</em>.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">Which budget alert actually prevents overspend?</div>
+      <div class="row"><div class="opt no">ACTUAL at 100%</div><div class="rea">Fires when the budget is already fully spent. Useful as a record, useless as a warning.</div></div>
+      <div class="row"><div class="opt no">ACTUAL at 50% only</div><div class="rea">An earlier warning, but it says nothing about trajectory — 50% on the 2nd of the month is alarming, on the 28th it is fine.</div></div>
+      <div class="row"><div class="opt yes">FORECASTED at 100%, plus ACTUAL at 50%</div><div class="rea">Chosen. The forecast projects the month's trend and warns before the threshold is crossed, which is the only alert that gives time to act. The actual alert is the backstop for a sudden spike the forecast has not caught up with.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">The distinction in one line</span>
+      <strong>CloudTrail is a ledger of actions. Config is an inventory of states.</strong> Any
+      question containing "who", "when", "which user" or "from what IP" is CloudTrail. Any question
+      containing "which resources are", "is it compliant", "how was it configured last Tuesday" is
+      Config. Add <strong>CloudWatch</strong> as the third: it records <em>metrics and logs about
+      behaviour</em> — how busy, how slow, how many errors — which is a third question again.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">The audit bucket blocks all public access and is encrypted. Log file validation means tampering is detectable. In a real environment this bucket belongs in a <b>separate account</b> that the audited account cannot write over — an attacker's first move is deleting the trail.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">Both services are account-wide and managed. The scaling concern is cost, not capacity: Config's volume grows with how many resource types you record and how often they change.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">The characteristic failure is silence. A trail whose bucket policy is wrong records nothing and raises no error. A budget whose email was never confirmed sends nothing. <b>Both look configured and neither works</b> — which is why the console tour verifies delivery rather than trusting the resource exists.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">The first copy of management events is free; a second trail bills. <b>Data events</b> — every S3 object read, every Lambda invoke — are charged per event and are the usual cause of a shock CloudTrail bill. For Config, scope the recorder. Budgets are free for the first two.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>2–3 minutes.</b> Requires <code>infra/params.json</code> with your email — the template has no default, deliberately. Confirm the subscription from your inbox or no alert will ever arrive.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Query CloudTrail for the last 90 days and <b>read back the history of labs 01–09</b> — every <code>CreateStack</code>, every <code>DeleteStack</code>, every NAT gateway created and destroyed. This is the only lab that can show you the others.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Create a security group allowing <code>0.0.0.0/0</code> on port 22. Config marks it <code>NON_COMPLIANT</code> within minutes; CloudTrail shows who created it. Two services, two halves of the answer.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx"><b>3–4 minutes.</b> The recorder must stop before the delivery channel can go, and the bucket must be emptied. Consider keeping the budget — it is free and it protects every future lab.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>Your own history in <code>lookup-events</code>. Nine labs of evidence were being recorded by the default event history before this trail existed.</li>
+            <li>The delay before Config reports compliance. It is minutes, not seconds — Config is for governance, not for real-time prevention.</li>
+            <li>Whether the budget email actually arrives. An unconfirmed subscription is the most common reason a budget alert never fires.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never enable CloudTrail <b>data events</b> across all S3 buckets without thinking. Management
+          events are free and low-volume; data events log <b>every single object-level operation</b>,
+          and on a busy bucket that is millions of events a day at $0.10 per hundred thousand. It is
+          one of the fastest ways to turn a governance improvement into a five-figure surprise.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / hour</th><th style="text-align:right">This lab</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>CloudTrail management events</td><td class="n">0.0000</td><td class="n">0.0000</td><td>First copy is free</td></tr>
+        <tr><td>AWS Config configuration items</td><td class="n">—</td><td class="n">~0.0100</td><td>$0.003 each; scoped to 4 types</td></tr>
+        <tr><td>Config rule evaluations</td><td class="n">—</td><td class="n">~0.0010</td><td>$0.001 per evaluation</td></tr>
+        <tr><td>Budgets</td><td class="n">0.0000</td><td class="n">0.0000</td><td>First two are free</td></tr>
+        <tr><td>S3 storage (1-day retention)</td><td class="n">0.0000</td><td class="n">~0.0001</td><td>Kilobytes</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">~0.0000</td><td class="n">~0.0111</td><td>About one cent</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> Cost Explorer is not enabled on this account, which is
+    why every lab in this curriculum estimates cost from published rates instead of querying actual
+    spend — worth knowing that enabling it is free, takes 24 hours to populate, and that its API
+    calls cost $0.01 each. No Organizations or consolidated billing, which is where service control
+    policies and volume discounts live. No Savings Plans or Reserved Instances: both trade
+    commitment for discount, and both are answers to "predictable steady-state usage", never to
+    "unpredictable spiky load". No Trusted Advisor, whose full check set needs a Business support
+    plan.</p>
+
+    <div class="callout warn">
+      <span class="ct">The last word on cost, after ten labs</span>
+      The cheapest architecture in this curriculum was Lab 04 at <strong>exactly zero per hour
+      idle</strong>. The most expensive was Lab 03 at <strong>$0.078</strong>, most of which bought
+      a standby serving no traffic. The single largest avoidable line item anywhere was Lab 01's NAT
+      gateway — <strong>$43 a month to pass packets nobody was sending</strong>. Cost optimisation on
+      the exam is rarely about choosing a smaller instance. It is about noticing which components
+      charge by the hour whether or not anyone uses them, and removing the ones that do not need to.
+    </div>
+  </div>
+</div>
+</body>
+</html>

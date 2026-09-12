@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 07",
+  "title": "IAM Evaluation Drill",
+  "intro": "Twelve scenario questions on policy evaluation, boundaries, roles and cross-account access. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 07 — How IAM actually decides. Reference notes: exam-notes.md",
+  "notes_title": "Lab 07 (IAM in depth)",
+  "notes_intro": "Twelve SAA-C03-style questions on how IAM evaluates a request, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "A role has an identity policy allowing `s3:*`. The bucket's resource policy contains an explicit Deny for that role's ARN. The role also has AdministratorAccess attached. Can it read the bucket?",
+      "options": [
+        "Yes — AdministratorAccess overrides resource policies",
+        "No — an explicit Deny anywhere overrides every Allow",
+        "Yes — identity policies take precedence over resource policies",
+        "Only if the request comes from inside the VPC"
+      ],
+      "answer": 1,
+      "why": "<strong>Explicit deny wins, always.</strong> It is evaluated first and nothing overrides it — not AdministratorAccess, not the account root, not a resource policy allow. This is the first rule of IAM evaluation and the most reliably tested one."
+    },
+    {
+      "q": "A role has an identity policy allowing `s3:*` and `ec2:*`, and a permission boundary allowing only `s3:Get*` and `s3:List*`. What can the role actually do?",
+      "options": [
+        "Everything in the identity policy — boundaries only apply to users",
+        "Only s3:Get* and s3:List* — the intersection of policy and boundary",
+        "Everything in the boundary, plus ec2:*",
+        "Nothing, because the two conflict"
+      ],
+      "answer": 1,
+      "why": "Effective permissions are the <strong>intersection</strong> of the identity policy and the boundary. The boundary is a ceiling that grants nothing on its own — every EC2 action and every S3 write falls outside it and is denied, even though the identity policy plainly allows them."
+    },
+    {
+      "q": "A permission boundary allowing `s3:*` is attached to a role that has no identity policy at all. What can the role do?",
+      "options": [
+        "Everything in S3, since the boundary allows it",
+        "Nothing — a boundary grants no permissions",
+        "Only read operations in S3",
+        "Everything, because an empty identity policy means unrestricted"
+      ],
+      "answer": 1,
+      "why": "A boundary <strong>only ever subtracts</strong>. With no identity policy there is nothing to intersect with, so the effective permission set is empty and the role can do nothing. Treating a boundary as a way to grant access is the classic misunderstanding."
+    },
+    {
+      "q": "A team must be able to create IAM roles for their applications without being able to grant those roles more access than the security team permits. What is the standard approach?",
+      "options": [
+        "Grant them iam:* and audit role creation with CloudTrail",
+        "Require a permission boundary on any role they create, enforced by a condition on iam:CreateRole",
+        "Give them read-only IAM access and create roles on their behalf",
+        "Apply a service control policy to their IAM user"
+      ],
+      "answer": 1,
+      "why": "A condition requiring <code>iam:PermissionsBoundary</code> on <code>CreateRole</code> means every role they create is capped, whatever policy they attach. This is the canonical use of boundaries: delegating role creation without enabling privilege escalation. Auditing after the fact does not prevent it."
+    },
+    {
+      "q": "An EC2 instance in Account A must read an S3 bucket in Account B. What is the recommended mechanism?",
+      "options": [
+        "Create an IAM user in Account B and put its access keys on the instance",
+        "A role in Account B that the instance's role assumes, or a bucket policy granting the instance role",
+        "Make the bucket public and restrict by IP",
+        "Enable cross-region replication into Account A"
+      ],
+      "answer": 1,
+      "why": "Either <strong>cross-account role assumption</strong> — a role in B trusting A, assumed via STS — or a <strong>bucket policy in B</strong> naming the instance's role directly. Both avoid long-lived credentials. Access keys on an instance are the anti-pattern the instance role exists to eliminate."
+    },
+    {
+      "q": "The policy simulator reports `implicitDeny` for an action. What does that mean?",
+      "options": [
+        "A policy explicitly denied the action",
+        "No policy allowed the action, so the default deny applies",
+        "The simulator could not evaluate the request",
+        "A service control policy blocked it"
+      ],
+      "answer": 1,
+      "why": "<strong>Implicit deny</strong> is the default: nothing granted the action. <strong>Explicit deny</strong> means a policy actively forbade it. They need different fixes — an implicit deny is solved by adding an allow, an explicit deny by finding and removing the Deny statement, which no amount of additional allows will overcome."
+    },
+    {
+      "q": "A company has 40 teams and wants each to manage only its own EC2 instances, without writing 40 policies. Which approach fits best?",
+      "options": [
+        "One IAM group per team with a team-specific policy",
+        "Attribute-based access control using tag conditions",
+        "A permission boundary per team",
+        "One shared role with a very long policy listing every instance"
+      ],
+      "answer": 1,
+      "why": "<strong>ABAC</strong> matches <code>aws:ResourceTag/team</code> against <code>aws:PrincipalTag/team</code> in a single policy that works for every team — including teams that do not exist yet. The trade-off is that tagging discipline becomes a security control. Role-per-team is correct but multiplies the policies to maintain."
+    },
+    {
+      "q": "Which credential type does an application running on EC2 receive when it uses an instance profile?",
+      "options": [
+        "A permanent access key and secret stored in the instance metadata",
+        "Temporary credentials that are automatically rotated",
+        "The credentials of the user who launched the instance",
+        "A password stored in Secrets Manager"
+      ],
+      "answer": 1,
+      "why": "The instance profile delivers <strong>temporary credentials via STS</strong>, retrieved from the instance metadata service and rotated automatically before expiry. Nothing long-lived exists to leak or rotate — which is exactly why instance roles beat access keys in every scenario the exam presents."
+    },
+    {
+      "q": "An SCP attached to an account denies `s3:DeleteBucket`. A user in that account has AdministratorAccess. Can they delete a bucket?",
+      "options": [
+        "Yes — AdministratorAccess is evaluated after SCPs",
+        "No — an SCP sets a ceiling the account cannot exceed, including for root",
+        "Only if they use the root user",
+        "Only from the AWS console, not the CLI"
+      ],
+      "answer": 1,
+      "why": "A <strong>service control policy</strong> is a ceiling on an entire account in an Organization. It grants nothing and cannot be overridden from inside the account — <strong>including by the account root user</strong>. Like a permission boundary, it only ever subtracts."
+    },
+    {
+      "q": "A role's trust policy determines what?",
+      "options": [
+        "What actions the role may perform",
+        "Which principals are allowed to assume the role",
+        "Which resources the role may access",
+        "How long the role's credentials remain valid"
+      ],
+      "answer": 1,
+      "why": "The <strong>trust policy</strong> (the assume-role policy document) says <em>who may become</em> the role. The <strong>permission policy</strong> says <em>what the role may do</em> once assumed. Both must permit the operation: a principal with <code>sts:AssumeRole</code> still fails if the trust policy does not name it."
+    },
+    {
+      "q": "Within a single account, an IAM role has no S3 permissions in its identity policy, but a bucket policy explicitly allows that role to GetObject. Can it read the object?",
+      "options": [
+        "No — the identity policy must also allow it",
+        "Yes — within one account, an allow in either policy is sufficient",
+        "Only if the bucket is in the same region",
+        "Only if the role has s3:ListBucket as well"
+      ],
+      "answer": 1,
+      "why": "<strong>Within the same account</strong>, an allow in the identity policy <em>or</em> the resource policy is enough. This is why S3 access can appear from nowhere when reading only the identity side. <strong>Cross-account is different</strong>: both the resource policy in the target account and the identity policy in the caller's account must allow it."
+    },
+    {
+      "q": "What is the practical difference between an IAM role and an IAM user?",
+      "options": [
+        "Roles are for AWS services, users are for people — nothing else differs",
+        "A user has long-lived credentials; a role is assumed and issues temporary credentials",
+        "Roles cannot have policies attached",
+        "Users can be assumed by services, roles cannot"
+      ],
+      "answer": 1,
+      "why": "A <strong>user</strong> is an identity with long-lived credentials — a password and/or access keys. A <strong>role</strong> has no credentials of its own: principals assume it and receive temporary STS credentials that expire. Current best practice is to avoid users almost entirely, using federation or instance/service roles instead."
+    }
+  ]
+}

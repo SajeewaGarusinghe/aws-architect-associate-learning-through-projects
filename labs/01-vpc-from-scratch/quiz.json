@@ -1,0 +1,137 @@
+{
+  "eyebrow": "SAA-C03 · Lab 01",
+  "title": "VPC Exam Drill",
+  "intro": "Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 01 — VPC from scratch. Reference notes: exam-notes.md",
+  "notes_title": "Lab 01 (VPC from scratch)",
+  "notes_intro": "Twelve SAA-C03-style questions drawn from what this lab builds, then the traps and the reference tables worth memorising. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+      "options": [
+        "The instance needs an Elastic IP instead of an auto-assigned public IP",
+        "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
+        "The instance needs a NAT gateway to reach the internet",
+        "DNS hostnames are disabled on the VPC"
+      ],
+      "answer": 1,
+      "why": "A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> — that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."
+    },
+    {
+      "q": "Instances in a private subnet cannot complete outbound HTTPS requests — connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+      "options": [
+        "Add an inbound rule for TCP 443 to the security group",
+        "Add an inbound network ACL rule allowing TCP 1024–65535 from <code>0.0.0.0/0</code>",
+        "Add an outbound rule for ephemeral ports to the security group",
+        "Replace the custom network ACL with the default network ACL"
+      ],
+      "answer": 1,
+      "why": "Network ACLs are <strong>stateless</strong> — each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024–65535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."
+    },
+    {
+      "q": "Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+      "options": [
+        "Create an interface endpoint for S3",
+        "Create a gateway endpoint for S3",
+        "Move the instances to a public subnet",
+        "Add a second NAT gateway to spread the load"
+      ],
+      "answer": 1,
+      "why": "Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."
+    },
+    {
+      "q": "A security policy forbids any internet path from a private subnet — no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+      "options": [
+        "<code>ssm</code> only",
+        "<code>ssm</code> and <code>ec2</code>",
+        "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
+        "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"
+      ],
+      "answer": 2,
+      "why": "All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."
+    },
+    {
+      "q": "One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
+      "options": [
+        "They continue normally; NAT gateways are regional",
+        "They lose outbound internet connectivity",
+        "They automatically fail over to an internet gateway",
+        "They lose all connectivity, including to other subnets in the VPC"
+      ],
+      "answer": 1,
+      "why": "A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it — and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."
+    },
+    {
+      "q": "How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+      "options": ["256", "254", "251", "250"],
+      "answer": 2,
+      "why": "A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 — the on-premises networking answer."
+    },
+    {
+      "q": "Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
+      "options": [
+        "It succeeds; the more specific route wins",
+        "It succeeds, but only one direction works",
+        "It fails — peered VPCs cannot have overlapping CIDR blocks",
+        "It succeeds if a transit gateway is used instead"
+      ],
+      "answer": 2,
+      "why": "Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build — it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."
+    },
+    {
+      "q": "Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
+      "options": [
+        "A NAT gateway",
+        "An egress-only internet gateway",
+        "An internet gateway with a restrictive network ACL",
+        "A NAT instance with source/destination checking disabled"
+      ],
+      "answer": 1,
+      "why": "An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."
+    },
+    {
+      "q": "A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+      "options": [
+        "Rejected inbound SSH attempts",
+        "Traffic between two instances in different subnets of the same VPC",
+        "Requests to the instance metadata service at <code>169.254.169.254</code>",
+        "Outbound HTTPS traffic to the internet through a NAT gateway"
+      ],
+      "answer": 2,
+      "why": "Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic — the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."
+    },
+    {
+      "q": "A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
+      "options": [
+        "A security group inbound deny rule",
+        "A network ACL inbound deny rule",
+        "A security group with the IP removed from the allow list",
+        "An egress-only internet gateway"
+      ],
+      "answer": 1,
+      "why": "Security groups support <strong>allow rules only</strong> — there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."
+    },
+    {
+      "q": "A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+      "options": [
+        "A NAT gateway",
+        "A NAT instance",
+        "An egress-only internet gateway",
+        "An internet gateway"
+      ],
+      "answer": 1,
+      "why": "A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither — only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."
+    },
+    {
+      "q": "A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+      "options": [
+        "NAT gateways bill per connection, and idle connections still count",
+        "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
+        "The Elastic IP is billed at a premium when attached to a NAT gateway",
+        "NAT gateways bill a minimum of 1 TB of data processing per month"
+      ],
+      "answer": 1,
+      "why": "A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> — about <strong>$43/month idle</strong> — plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."
+    }
+  ]
+}

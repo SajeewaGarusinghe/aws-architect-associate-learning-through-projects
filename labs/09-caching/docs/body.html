@@ -1,0 +1,284 @@
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 09 — Cache-Aside, Measured</h1>
+    <div class="sub">A function inside a VPC reading through Redis to DynamoDB, where the response itself reports whether it was a hit or a miss and how long each took.</div>
+    <div class="meta">
+      <div><b>2</b>data paths</div>
+      <div><b>60s</b>cache TTL</div>
+      <div><b>0</b>NAT gateways</div>
+      <div><b>$0.028</b>per hour live</div>
+    </div>
+  </div>
+
+  <p>Lab 04 deliberately kept its function out of a VPC and said so. This lab puts one inside a VPC,
+  because it has the only good reason to: ElastiCache is reachable from nowhere else. That decision
+  brings back subnets, security groups and a route table — and the cost of forgetting a VPC endpoint.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: the cache-aside pattern, TTL as a staleness bound, Lambda inside a VPC and what that
+    changes, gateway endpoints instead of NAT, and where caching belongs relative to the database.
+    Out of scope: write-through and write-behind caching, Redis cluster mode and replication, and
+    DynamoDB DAX.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Ask the cache first, the database second</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>Cache-aside puts the application in charge: it checks the cache, and only on a miss does it
+      read the system of record and populate the cache — which means the cache can be emptied,
+      resized or lost entirely without any data being lost, only latency.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Serve repeated reads without touching the database</li>
+          <li>Populate the cache on a miss, automatically</li>
+          <li>Bound how stale an answer can be</li>
+          <li>Keep working when the cache is unavailable</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Redis reachable only from the function's security group</li>
+          <li>No internet route anywhere in the VPC</li>
+          <li>Hit and miss distinguishable in the response</li>
+          <li>Cache loss must cost latency, never data</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li><code>cache.t3.micro</code>, single node</li>
+          <li>No NAT gateway — a gateway endpoint instead</li>
+          <li>CIDR <code>10.50.0.0/16</code></li>
+          <li>Under $0.04/hour</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>HTTP API</div>
+        <div class="role">The same public entry point as Lab 04. <b>Why:</b> API Gateway is outside the VPC entirely — it invokes the function through the Lambda service, so no network path between them is required or possible.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>Lambda in a VPC</div>
+        <div class="role">Attached to both private subnets, 512 MB. <b>Why:</b> a VPC-attached function runs behind elastic network interfaces in your subnets, which is the <em>only</em> way to reach ElastiCache. It also means the function inherits your routing — including the absence of a route to the internet.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>ElastiCache for Redis</div>
+        <div class="role">A single <code>cache.t3.micro</code> node, no replica. <b>Why:</b> the cache is deliberately disposable. Losing it costs latency and a burst of database reads, never data — which is precisely what cache-aside buys you.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>DynamoDB table</div>
+        <div class="role">The system of record, on-demand billing. <b>Why:</b> the cache is an optimisation in front of it, never a replacement. Every value in Redis originated here and can be rebuilt from here.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>DynamoDB gateway endpoint</div>
+        <div class="role">A prefix-list route in the private route table. <b>Why:</b> without it the VPC-attached function <b>could not reach DynamoDB at all</b>. The alternative is a NAT gateway at $0.059/hour; the endpoint is free, and this is the single most valuable cost lesson in the lab.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>Security group chain</div>
+        <div class="role">Redis admits port 6379 only from the function's security group. <b>Why:</b> the third appearance of this construct in the curriculum — the permission follows the function, not any address range.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>60-second TTL</div>
+        <div class="role">Set with <code>SETEX</code> when a value is cached. <b>Why:</b> the TTL is the contract about staleness. It is the maximum time a reader can see a value that no longer matches the database, and choosing it is a business decision, not a technical one.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 440" role="img" aria-label="An HTTP API invoking a VPC-attached Lambda function that reads ElastiCache for Redis first and falls back to DynamoDB through a gateway endpoint on a miss.">
+        <rect class="d-bg" x="0" y="0" width="760" height="440"/>
+
+        <rect class="tile-w" x="20" y="150" width="104" height="46" rx="5"/>
+        <text class="t-lbli" x="72" y="170">Client</text>
+        <text class="flow" x="72" y="185" text-anchor="middle">HTTPS</text>
+
+        <rect class="region" x="140" y="16" width="612" height="408" rx="8"/>
+        <text class="zone-lbl" x="152" y="36" fill="#545B64">REGION · ap-southeast-2</text>
+
+        <rect class="tile-o" x="160" y="150" width="112" height="46" rx="4"/>
+        <text class="t-lbli" x="216" y="170">HTTP API</text>
+        <text class="t-subd" x="216" y="185">outside the VPC</text>
+
+        <rect class="vpc" x="296" y="56" width="440" height="292" rx="6"/>
+        <text class="zone-lbl" x="308" y="76" fill="#2D72B8">VPC · 10.50.0.0/16 · NO INTERNET ROUTE</text>
+
+        <rect class="sub-priv" x="312" y="92" width="408" height="128" rx="4"/>
+        <text class="zone-lbl" x="322" y="110" fill="#2D72B8">private subnets · 10.50.11.0/24 + 10.50.12.0/24</text>
+
+        <rect class="tile" x="330" y="126" width="150" height="76" rx="4"/>
+        <text class="t-lbl" x="405" y="150">Lambda</text>
+        <text class="t-sub" x="405" y="165">in VPC · behind ENIs</text>
+        <text class="t-sub" x="405" y="180">512 MB</text>
+
+        <rect class="tile-p" x="540" y="126" width="160" height="76" rx="4"/>
+        <text class="t-lbl" x="620" y="150">ElastiCache</text>
+        <text class="t-sub" x="620" y="165">Redis · cache.t3.micro</text>
+        <text class="t-sub" x="620" y="180">TTL 60s</text>
+
+        <rect class="tile-w" x="330" y="242" width="370" height="34" rx="3"/>
+        <text class="t-lbli" x="515" y="263" style="font-size:10px">rt-private → DynamoDB prefix list → gateway endpoint (free)</text>
+
+        <rect class="tile-b" x="404" y="300" width="222" height="34" rx="4"/>
+        <text class="t-lbl" x="515" y="322">DynamoDB · system of record</text>
+
+        <path class="ln-o" d="M124,173 H156" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M272,173 H326" marker-end="url(#arrow-o)"/>
+
+        <path class="ln-o" d="M480,156 H536" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="484" y="150">1. GET</text>
+
+        <path class="ln" d="M405,202 V238" marker-end="url(#arrow)"/>
+        <text class="flow" x="330" y="228">2. on a miss only</text>
+
+        <path class="ln-async" d="M620,202 V218 H515 V296" marker-end="url(#arrow-a)"/>
+        <text class="flow" x="540" y="288">3. SETEX writes it back</text>
+
+        <text class="flow" x="152" y="240">A cache hit never</text>
+        <text class="flow" x="152" y="252">leaves the subnet.</text>
+        <text class="flow" x="152" y="270">A miss costs one</text>
+        <text class="flow" x="152" y="282">DynamoDB read and</text>
+        <text class="flow" x="152" y="294">one cache write.</text>
+
+        <text class="flow" x="152" y="330">Without the gateway</text>
+        <text class="flow" x="152" y="342">endpoint this function</text>
+        <text class="flow" x="152" y="354">could not reach</text>
+        <text class="flow" x="152" y="366">DynamoDB at all —</text>
+        <text class="flow" x="152" y="378">a VPC Lambda has no</text>
+        <text class="flow" x="152" y="390">public route by default.</text>
+
+        <text class="flow" x="404" y="400">Cache loss costs latency and a burst of reads. It never costs data.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — Step 1 happens on every request. Steps 2 and 3 happen only on a miss, and the purple write-back is what makes the next request cheap. Everything inside the blue frame is unreachable from the internet in either direction.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = tier</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Entry point</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Compute</div>
+        <div class="it"><span class="chip" style="background:#8B5CF6"></span>Cache (disposable)</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>System of record</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Route table</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style = path</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Every request</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>On a miss only</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Write back to cache</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">A request arrives at the HTTP API, which invokes the function through the Lambda service. <b>No network path exists between them</b> — API Gateway is not in the VPC.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">The function runs behind an elastic network interface in a private subnet and issues <code>GET product:p-1</code> to Redis over the VPC's private address space.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd"><b>On a hit</b> the value is returned immediately. The request never reaches DynamoDB and never leaves the subnet — typically a few milliseconds.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd"><b>On a miss</b> the function reads DynamoDB. That traffic matches the prefix-list route and leaves through the <b>gateway endpoint</b>, which costs nothing; with no endpoint and no NAT it would simply time out.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">The value is written back with <code>SETEX</code> and a 60-second TTL, so the next reader hits the cache and the entry cannot outlive its staleness budget.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">The response reports <code>CACHE HIT</code> or <code>CACHE MISS</code> and elapsed milliseconds, making the difference visible rather than asserted.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd"><b>If Redis is unreachable</b> the function logs it and reads DynamoDB anyway. The cache is an optimisation; its failure is a slowdown, not an outage.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">How should the VPC-attached function reach DynamoDB?</div>
+      <div class="row"><div class="opt no">A NAT gateway</div><div class="rea">Works, and it is what most people reach for. It costs <b>$0.059/hour plus data processing</b> — more than double this entire lab — to send AWS-service traffic out to the internet and back into AWS.</div></div>
+      <div class="row"><div class="opt no">Interface endpoints for DynamoDB</div><div class="rea">DynamoDB does support them, but they bill hourly per AZ. Right when traffic must arrive from on-premises over Direct Connect; wasteful here.</div></div>
+      <div class="row"><div class="opt yes">A gateway endpoint</div><div class="rea">Chosen. Free, a route-table entry rather than an ENI, and available for exactly two services: <b>S3 and DynamoDB</b>. If a question has a VPC resource talking to either one, this is almost always the intended answer.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">Where should the cache sit?</div>
+      <div class="row"><div class="opt no">In front of everything, at the edge</div><div class="rea">CloudFront caches responses close to users and is excellent for static content — but it cannot cache a per-user query result that depends on database state.</div></div>
+      <div class="row"><div class="opt no">Inside the function's memory</div><div class="rea">Free and fast, but each execution environment has its own copy. Nothing is shared, nothing is invalidated, and a scaled-out function has dozens of inconsistent caches.</div></div>
+      <div class="row"><div class="opt yes">A shared cache beside the application</div><div class="rea">Chosen. Every function instance sees the same entries, one write-back benefits all subsequent readers, and TTL behaviour is consistent across the fleet.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">Redis or Memcached — the exam's framing</span>
+      <strong>Memcached</strong> is simple, multi-threaded, and purely a cache: no persistence, no
+      replication, no failover. <strong>Redis</strong> adds replication, Multi-AZ with automatic
+      failover, snapshots, transactions, and data structures like sorted sets — which is why it is
+      the answer whenever a question mentions leaderboards, pub/sub, persistence, or high
+      availability. Memcached is the answer when the question emphasises simplicity or the ability
+      to scale horizontally by adding nodes.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">Redis is reachable only from the function's security group, in subnets with no internet route, and holds only copies of data that lives durably in DynamoDB. The execution role grants two DynamoDB actions on one table.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">A VPC-attached function scales like any other, but each concurrent execution needs an ENI — so <b>subnet address space becomes a concurrency limit</b>, which is a genuine production surprise. Redis scales by node size, or by replicas for reads, or by cluster mode for sharded writes.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">A single cache node has no failover: losing it means every request misses until it returns, which is a <b>thundering herd</b> against the database. Production would use Multi-AZ with automatic failover. The subtler failure is a TTL longer than the business tolerates, serving confidently wrong data.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">The node is the only hourly charge here, and unlike Lambda it bills whether or not anything uses it — a cache is a server, with all that implies. Not provisioning a NAT gateway saves twice the node's cost. Hit ratio is the lever that decides how much DynamoDB capacity you avoid.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>6–9 minutes</b>, nearly all of it the ElastiCache node. Everything else is created in under a minute while Redis provisions.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Call the endpoint twice. The first reports <code>CACHE MISS</code> with a larger elapsed time; the second reports <code>CACHE HIT</code>, faster. Wait 60 seconds and the miss returns as the TTL expires.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Remove the Redis ingress rule from the cache security group. Every request becomes a miss and the logs show <code>cache unavailable</code> — <b>the API keeps working</b>, only slower, which is the resilience property of cache-aside. Restore the rule.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx"><b>8–12 minutes.</b> The cache node must be deleted, and Lambda's ENIs can take several minutes to detach before the subnets and security groups can go. A teardown that appears stuck on the security group is almost always waiting for an ENI.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>The <code>ms</code> figure between a hit and a miss. The gap is what the cache is actually buying, in the only units that matter.</li>
+            <li>The TTL expiring. Sixty seconds after the first call the miss returns — the entry was not evicted for space, it aged out by design.</li>
+            <li>The API still answering with Redis blocked. A cache whose failure takes the service down is not a cache, it is a dependency.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never put a Lambda function in a VPC unless it must reach something that only exists there.
+          A VPC-attached function inherits your routing, so it loses internet access entirely unless
+          you add a NAT gateway, and it consumes ENIs and subnet addresses as it scales. "For
+          security" is not a reason — S3, DynamoDB, SQS and most AWS services are not in your VPC,
+          and a function calling them is <b>no safer</b> inside one.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / hour</th><th style="text-align:right">20 minutes</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>ElastiCache <code>cache.t3.micro</code></td><td class="n">0.0280</td><td class="n">0.0093</td><td>Bills idle — it is a server</td></tr>
+        <tr><td>NAT Gateway</td><td class="n">0.0000</td><td class="n">0.0000</td><td><strong>Avoided</strong> by the gateway endpoint</td></tr>
+        <tr><td>Lambda, API Gateway, DynamoDB</td><td class="n">0.0000</td><td class="n">~0.0001</td><td>Per request</td></tr>
+        <tr><td>VPC, subnets, route table, gateway endpoint</td><td class="n">0.0000</td><td class="n">0.0000</td><td>No hourly charge</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.0280</td><td class="n">0.0094</td><td>Under a cent</td></tr>
+      </tbody>
+    </table>
+
+    <p>The gateway endpoint is worth restating: adding a NAT gateway instead would have made this
+    lab <strong>more than three times</strong> the price, to do the same work more slowly.</p>
+
+    <p><strong>Deliberately absent.</strong> No Redis replica or Multi-AZ failover — correct for
+    production, and it would double the only hourly cost here. No write-through caching, where the
+    application writes to cache and database together: it keeps the cache warmer at the price of
+    writing data nobody reads. No DAX, which is a DynamoDB-specific cache requiring no application
+    change at all, and the right answer when a question asks for microsecond DynamoDB reads without
+    rewriting the code.</p>
+
+    <div class="callout warn">
+      <span class="ct">Choosing a caching layer</span>
+      <strong>CloudFront</strong> caches responses at the edge, close to users — static content and
+      whole HTTP responses. <strong>ElastiCache</strong> caches arbitrary application data beside
+      the application — query results, sessions, computed values. <strong>DAX</strong> caches
+      DynamoDB specifically, transparently, in microseconds. <strong>API Gateway caching</strong>
+      caches whole API responses per stage, billed hourly. Read the question for <em>what</em> is
+      being cached and <em>where the latency is</em>, and the choice is usually unambiguous.
+    </div>
+  </div>

@@ -43,10 +43,27 @@ done
 
 # --- the baseline that should always be there --------------------------------
 hdr "Protected resources (must still exist)"
-INST=$(aws ec2 describe-instances --instance-ids "${PROTECTED_INSTANCES[0]}" \
-  --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo MISSING)
-[[ "$INST" == "running" ]] && ok "session host ${PROTECTED_INSTANCES[0]} is running" \
-                           || flag "session host is '$INST' — expected running"
+# The session host id changes whenever the box is replaced (the free plan blocks
+# in-place resize, so replacement is via AMI). Ask the metadata service which
+# instance we are actually on rather than trusting a hardcoded id.
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null || true)
+SELF=$(curl -s -m 3 -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "")
+
+if [[ -n "$SELF" ]]; then
+  if printf '%s\n' "${PROTECTED_INSTANCES[@]}" | grep -qx "$SELF"; then
+    ok "session host $SELF is in the protected list"
+  else
+    flag "session host $SELF is NOT protected — add it to PROTECTED_INSTANCES in scripts/guardrails.sh"
+  fi
+  INST=$(aws ec2 describe-instances --instance-ids "$SELF" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo MISSING)
+  [[ "$INST" == "running" ]] && ok "session host is running" \
+                             || flag "session host is '$INST' — expected running"
+else
+  warn "instance metadata unavailable — cannot confirm which host this is"
+fi
 
 VPCS=$(aws ec2 describe-vpcs --query 'length(Vpcs)' --output text)
 INSTS=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" \

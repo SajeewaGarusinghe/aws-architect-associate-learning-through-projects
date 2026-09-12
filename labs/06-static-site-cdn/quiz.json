@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 06",
+  "title": "S3 And CloudFront Drill",
+  "intro": "Twelve scenario questions on S3 storage classes, bucket security and CloudFront behaviour. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 06 — Static site on S3 behind CloudFront. Reference notes: exam-notes.md",
+  "notes_title": "Lab 06 (Static site + CDN)",
+  "notes_intro": "Twelve SAA-C03-style questions on object storage, lifecycle policy and content delivery, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "A static website is served by CloudFront from an S3 origin. Security requires that the bucket never be publicly accessible, while the site stays reachable. What should be configured?",
+      "options": [
+        "Enable S3 static website hosting and make the bucket public",
+        "Use Origin Access Control and a bucket policy naming the CloudFront service principal",
+        "Place the bucket in a private subnet",
+        "Use a bucket ACL granting read to AuthenticatedUsers"
+      ],
+      "answer": 1,
+      "why": "<strong>Origin Access Control</strong> signs origin requests with SigV4, and the bucket policy allows <code>s3:GetObject</code> to the CloudFront service principal conditioned on the specific distribution ARN. All four public-access blocks stay on. S3 is not in a VPC, so subnets are irrelevant; <code>AuthenticatedUsers</code> means any AWS user anywhere, which is a classic wrong answer."
+    },
+    {
+      "q": "A CloudFront distribution returns 403 Access Denied for a URL path that does not exist in the S3 bucket, instead of a 404. Why?",
+      "options": [
+        "The distribution is misconfigured and must be redeployed",
+        "S3 returns 403 rather than 404 for a missing key when the caller lacks s3:ListBucket",
+        "CloudFront caches 404 responses as 403",
+        "The bucket policy is missing s3:GetObject"
+      ],
+      "answer": 1,
+      "why": "S3 deliberately returns <strong>403 for a nonexistent key</strong> when the caller has no <code>s3:ListBucket</code> permission — revealing whether an object exists would itself leak information. A CloudFront custom error response mapping 403 to your 404 page is the standard fix, and this trips people constantly when debugging static sites."
+    },
+    {
+      "q": "Data must be retained for compliance for seven years, is essentially never accessed, and a retrieval time of twelve hours is acceptable. Which storage class minimises cost?",
+      "options": [
+        "S3 Standard-Infrequent Access",
+        "S3 Glacier Deep Archive",
+        "S3 Glacier Instant Retrieval",
+        "S3 Intelligent-Tiering"
+      ],
+      "answer": 1,
+      "why": "<strong>Glacier Deep Archive</strong> is the cheapest S3 storage, designed for long-term retention with retrieval measured in hours and a 180-day minimum duration. Glacier Instant Retrieval costs more because it offers millisecond access. Standard-IA is far more expensive for data never read. Intelligent-Tiering suits <em>unknown or changing</em> access patterns, not a known-cold one."
+    },
+    {
+      "q": "An application's access pattern is unpredictable — some objects are read constantly, others not for months, and it changes over time. Which storage class is appropriate?",
+      "options": [
+        "S3 Standard for everything",
+        "S3 Intelligent-Tiering",
+        "S3 One Zone-IA",
+        "A lifecycle policy moving everything to Glacier after 30 days"
+      ],
+      "answer": 1,
+      "why": "<strong>Intelligent-Tiering</strong> moves objects between access tiers automatically based on observed usage, for a small per-object monitoring fee and no retrieval charges in the frequent and infrequent tiers. Whenever a question describes an access pattern as unknown, unpredictable or changing, this is the intended answer."
+    },
+    {
+      "q": "After uploading a corrected index.html to the origin bucket, viewers still receive the old content. What explains this?",
+      "options": [
+        "S3 is eventually consistent for overwrites",
+        "Edge locations serve the cached object until its TTL expires or an invalidation is issued",
+        "The bucket policy caches the old object",
+        "Versioning is serving the previous version"
+      ],
+      "answer": 1,
+      "why": "CloudFront caches at edge locations for the TTL set by the cache policy — with <code>CachingOptimized</code> the default is 24 hours. Uploading to the origin does not notify the edges. Either invalidate the path or, better, use <strong>versioned object names</strong> so every deploy is a new object and no invalidation is needed. S3 has been strongly consistent since 2020."
+    },
+    {
+      "q": "A bucket has versioning enabled. A user deletes an object. What actually happens?",
+      "options": [
+        "The object and all its versions are permanently removed",
+        "A delete marker becomes the current version and previous versions remain",
+        "The object moves to Glacier automatically",
+        "The delete is rejected until versioning is suspended"
+      ],
+      "answer": 1,
+      "why": "A delete on a versioned bucket writes a <strong>delete marker</strong> as the new current version; every prior version remains and is billable. Removing the delete marker restores the object. This also means a versioned bucket is not empty just because objects look deleted — which is why teardown must remove versions and delete markers."
+    },
+    {
+      "q": "Content must be served only to users who have paid, with access expiring after 24 hours. What is the appropriate CloudFront mechanism?",
+      "options": [
+        "Origin Access Control",
+        "Signed URLs or signed cookies",
+        "A bucket policy restricting by IP address",
+        "Geo-restriction"
+      ],
+      "answer": 1,
+      "why": "<strong>Signed URLs</strong> (one file) and <strong>signed cookies</strong> (many files or a whole area of a site) grant time-limited access to specific content. OAC controls how CloudFront reaches the <em>origin</em>, not who may reach CloudFront. Geo-restriction filters by country, not by entitlement."
+    },
+    {
+      "q": "An S3 bucket in ap-southeast-2 serves large files to users in Europe, who report slow uploads. Which feature most directly addresses upload speed?",
+      "options": [
+        "CloudFront with a longer TTL",
+        "S3 Transfer Acceleration",
+        "Cross-Region Replication",
+        "Multipart download"
+      ],
+      "answer": 1,
+      "why": "<strong>Transfer Acceleration</strong> routes uploads to the nearest CloudFront edge and carries them over the AWS backbone to the bucket, which helps most over long distances. CloudFront accelerates <em>downloads</em>, not uploads. Cross-Region Replication copies objects after they arrive, so it does not help the upload itself."
+    },
+    {
+      "q": "Which statement about S3 One Zone-IA is correct?",
+      "options": [
+        "It replicates across three availability zones like Standard",
+        "It stores data in a single AZ and is unsuitable for data that cannot be recreated",
+        "It has the same durability as Standard but slower retrieval",
+        "It is the cheapest class for archival data"
+      ],
+      "answer": 1,
+      "why": "<strong>One Zone-IA stores data in a single availability zone</strong>: roughly 20% cheaper than Standard-IA, and the data is lost if that AZ is destroyed. It suits easily recreatable data such as derived thumbnails or secondary copies — never the only copy of anything important."
+    },
+    {
+      "q": "A company wants to ensure no bucket in the account can ever be made public, even if someone later attaches a permissive bucket policy. What provides this?",
+      "options": [
+        "A lifecycle policy",
+        "S3 Block Public Access settings at the account level",
+        "Bucket versioning",
+        "Default encryption"
+      ],
+      "answer": 1,
+      "why": "<strong>Block Public Access</strong> is a backstop that overrides bucket policies and ACLs — with it enabled, a policy granting public access is simply refused. Applied at the account level it covers every bucket including future ones. This is the single most effective control against accidental S3 exposure."
+    },
+    {
+      "q": "CloudFront must serve content over HTTPS using a custom domain name. Where must the ACM certificate be requested?",
+      "options": [
+        "In the same region as the origin bucket",
+        "In us-east-1, regardless of where other resources are",
+        "In any region, CloudFront replicates it",
+        "Certificates cannot be used with CloudFront"
+      ],
+      "answer": 1,
+      "why": "A certificate used by CloudFront must be in <strong>us-east-1 (N. Virginia)</strong>, because CloudFront is a global service managed from that region. A certificate for an Application Load Balancer, by contrast, must be in the load balancer's own region. This asymmetry is a reliable exam detail."
+    },
+    {
+      "q": "What is the main cost difference between a CloudFront cache hit and a cache miss?",
+      "options": [
+        "A hit costs more because edge storage is billed",
+        "A miss adds an origin request and origin data transfer on top of the edge delivery",
+        "There is no cost difference",
+        "A miss is free because the origin serves it"
+      ],
+      "answer": 1,
+      "why": "A <strong>hit</strong> is served from the edge and costs the request plus data transfer out. A <strong>miss</strong> adds an S3 GET request and origin-to-edge transfer. This is why cache hit ratio is the main CloudFront cost lever — and why offloading traffic from the origin is a cost benefit as much as a latency one."
+    }
+  ]
+}

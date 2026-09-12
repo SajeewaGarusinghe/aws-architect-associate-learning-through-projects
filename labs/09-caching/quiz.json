@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 09",
+  "title": "Caching And Performance Drill",
+  "intro": "Twelve scenario questions on caching layers, ElastiCache, VPC endpoints and Lambda networking. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 09 — Cache-aside, measured. Reference notes: exam-notes.md",
+  "notes_title": "Lab 09 (Caching and performance)",
+  "notes_intro": "Twelve SAA-C03-style questions on caching strategy, ElastiCache and private connectivity, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "A Lambda function is attached to a VPC so it can reach an ElastiCache cluster. It must also read from DynamoDB. What is the cheapest way to give it that access?",
+      "options": [
+        "A NAT gateway in a public subnet",
+        "A DynamoDB gateway endpoint in the private route table",
+        "An interface endpoint for DynamoDB in each subnet",
+        "An internet gateway with a public IP on the function"
+      ],
+      "answer": 1,
+      "why": "A <strong>gateway endpoint is free</strong> — it is a prefix-list route, not an ENI — and exists for exactly two services: <strong>S3 and DynamoDB</strong>. A NAT gateway would cost $0.059/hour to send AWS traffic out to the internet and back. Interface endpoints bill hourly per AZ. Lambda functions cannot have public IPs."
+    },
+    {
+      "q": "An application caches query results in Redis with a 60-second TTL. What does the TTL primarily control?",
+      "options": [
+        "How much memory the cache may use",
+        "The maximum time a reader may see data that no longer matches the database",
+        "How long a client waits before timing out",
+        "How frequently the cache replicates to its replica"
+      ],
+      "answer": 1,
+      "why": "The TTL is the <strong>staleness bound</strong> — the contract about how out of date an answer may be. Choosing it is a business decision, not a technical one: how wrong can this value be before it matters? Memory pressure is handled separately by the eviction policy."
+    },
+    {
+      "q": "A team needs a cache supporting replication, Multi-AZ automatic failover, sorted sets for a leaderboard, and pub/sub. Which engine fits?",
+      "options": [
+        "Memcached",
+        "Redis",
+        "DynamoDB DAX",
+        "CloudFront"
+      ],
+      "answer": 1,
+      "why": "<strong>Redis</strong> supports replication, Multi-AZ failover, persistence, transactions and rich data structures including sorted sets and pub/sub. <strong>Memcached</strong> is a simple multi-threaded key/value cache with no persistence, replication or failover. Leaderboards, pub/sub and high availability all point to Redis."
+    },
+    {
+      "q": "In the cache-aside pattern, what happens when the cache becomes unavailable?",
+      "options": [
+        "The application fails, because the cache is on the critical path",
+        "Requests fall through to the database — slower, but still correct",
+        "Writes are queued until the cache returns",
+        "The database is bypassed and stale data is served"
+      ],
+      "answer": 1,
+      "why": "In cache-aside the application checks the cache and falls back to the system of record on a miss — so a cache outage costs <strong>latency and a burst of database load, never data</strong>. A cache whose failure takes the service down is not a cache; it is a dependency, and that is a design error."
+    },
+    {
+      "q": "A DynamoDB-backed application needs microsecond read latency without changing application code. What should be used?",
+      "options": [
+        "ElastiCache for Redis in front of DynamoDB",
+        "DynamoDB Accelerator (DAX)",
+        "A CloudFront distribution over the API",
+        "DynamoDB on-demand capacity"
+      ],
+      "answer": 1,
+      "why": "<strong>DAX</strong> is a DynamoDB-specific, write-through cache that is API-compatible with DynamoDB, so it requires essentially no code change and delivers microsecond reads. ElastiCache would work but requires implementing cache-aside yourself. On-demand capacity is a billing mode and changes nothing about latency."
+    },
+    {
+      "q": "Why does attaching a Lambda function to a VPC potentially limit its concurrency?",
+      "options": [
+        "VPC functions are capped at 100 concurrent executions",
+        "Each concurrent execution needs an elastic network interface, so subnet IP space becomes a limit",
+        "VPC functions may only run in one availability zone",
+        "The VPC's route table limits concurrent connections"
+      ],
+      "answer": 1,
+      "why": "A VPC-attached function runs behind ENIs in your subnets, and those consume IP addresses. Undersized subnets therefore become a hard ceiling on concurrency — a genuine production surprise. Modern Lambda shares ENIs far more efficiently than it once did, but address planning still matters."
+    },
+    {
+      "q": "Which statement about putting a Lambda function in a VPC is correct?",
+      "options": [
+        "It improves security when calling S3 and DynamoDB",
+        "It should only be done when the function must reach resources that exist only in the VPC",
+        "It is required for any function handling sensitive data",
+        "It gives the function a public IP address"
+      ],
+      "answer": 1,
+      "why": "S3, DynamoDB, SQS and most AWS services are <strong>not in your VPC</strong>, and a function calling them is no safer inside one. Attaching a VPC costs internet access (unless you add NAT), consumes ENIs and subnet addresses, and adds complexity. Do it only to reach RDS, ElastiCache or other VPC-only resources."
+    },
+    {
+      "q": "An ElastiCache node fails and the cache is empty when it returns. Every request now misses and hits the database simultaneously. What is this called, and what mitigates it?",
+      "options": [
+        "Cache poisoning — mitigated by shorter TTLs",
+        "A thundering herd or cache stampede — mitigated by Multi-AZ replicas and staggered TTLs",
+        "Cache eviction — mitigated by a larger node",
+        "A cold start — mitigated by provisioned concurrency"
+      ],
+      "answer": 1,
+      "why": "An empty cache sending every request to the database at once is a <strong>thundering herd</strong>. Mitigations: a replica with automatic failover so the cache is never wholly lost, jittered TTLs so entries do not expire together, and request coalescing so only one caller repopulates a given key."
+    },
+    {
+      "q": "Which caching layer is appropriate for caching whole HTTP responses close to end users worldwide?",
+      "options": [
+        "ElastiCache for Redis",
+        "CloudFront",
+        "DynamoDB DAX",
+        "An Application Load Balancer"
+      ],
+      "answer": 1,
+      "why": "<strong>CloudFront</strong> caches HTTP responses at roughly 600 edge locations, close to users. ElastiCache caches arbitrary application data beside the application, in one region. DAX caches DynamoDB items specifically. Load balancers distribute requests; they do not cache."
+    },
+    {
+      "q": "A read-heavy RDS database is CPU-saturated. The application cannot be changed to use a cache. What is the most appropriate scaling action?",
+      "options": [
+        "Enable Multi-AZ",
+        "Add read replicas and direct read traffic to them",
+        "Enable point-in-time recovery",
+        "Increase the backup retention period"
+      ],
+      "answer": 1,
+      "why": "<strong>Read replicas</strong> add read capacity — that is precisely what they are for. Multi-AZ adds a standby that serves no traffic and solves availability, not scale. Directing reads at replicas still requires an application or proxy change, but it is the only listed option that adds capacity."
+    },
+    {
+      "q": "Which two AWS services support gateway VPC endpoints?",
+      "options": [
+        "S3 and DynamoDB",
+        "S3 and RDS",
+        "DynamoDB and SQS",
+        "All AWS services support them"
+      ],
+      "answer": 0,
+      "why": "Gateway endpoints exist only for <strong>S3 and DynamoDB</strong>. They are free, implemented as prefix-list routes in a route table rather than as network interfaces, and cannot be reached from on-premises over VPN or Direct Connect. Every other service uses interface endpoints (PrivateLink), which bill hourly per AZ but do work over Direct Connect."
+    },
+    {
+      "q": "An ElastiCache cluster's memory fills up. What determines which items are removed?",
+      "options": [
+        "Items are never removed; writes fail instead",
+        "The eviction policy, commonly least-recently-used among keys with a TTL",
+        "The oldest items by creation date, always",
+        "Items are moved to disk automatically"
+      ],
+      "answer": 1,
+      "why": "The <strong>eviction policy</strong> decides — typically <code>volatile-lru</code> (least recently used among keys that have a TTL) or <code>allkeys-lru</code>. A cluster with no eviction policy and no free memory will start rejecting writes, which looks like an application bug rather than a capacity problem."
+    }
+  ]
+}

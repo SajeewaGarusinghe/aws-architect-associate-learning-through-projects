@@ -1,0 +1,270 @@
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 07 — How IAM Actually Decides</h1>
+    <div class="sub">Two roles with identical permission policies and opposite effective permissions, an explicit deny that nothing can override, and a resource policy that grants access the identity policy never mentions.</div>
+    <div class="meta">
+      <div><b>3</b>roles</div>
+      <div><b>1</b>boundary</div>
+      <div><b>0</b>servers</div>
+      <div><b>$0.00</b>total cost</div>
+    </div>
+  </div>
+
+  <p>Every other lab used IAM as scenery. This one makes it the subject. Nothing is deployed that
+  runs, stores or serves anything — the entire lab is roles, policies and the policy simulator,
+  which means it costs nothing at all and can be left running as long as you like.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: the evaluation order AWS actually applies, permission boundaries, explicit versus
+    implicit deny, identity versus resource policies, ABAC with tag conditions, and the policy
+    simulator. Out of scope: Organizations and service control policies, identity federation, and
+    IAM Identity Center — all worth knowing, none of which a single account can demonstrate.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Deny wins, then boundaries, then allows</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>A policy that says <code>Allow</code> does not mean access is granted — the request is
+      granted only if no explicit deny matches, every boundary in force permits it, and at least one
+      allow exists; and the two roles in this lab prove it by carrying the same permission policy to
+      opposite outcomes.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Show a boundary shrinking an over-broad policy</li>
+          <li>Show an explicit deny beating an allow</li>
+          <li>Show a resource policy granting on its own</li>
+          <li>Make each outcome checkable, not asserted</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>No IAM users, no access keys, roles only</li>
+          <li>Every claim verifiable with the simulator</li>
+          <li>A control case for every demonstration</li>
+          <li>Nothing that can actually be exploited</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>No compute, no network, no data</li>
+          <li>Cost exactly zero</li>
+          <li>Single account — no Organizations</li>
+          <li>Destroyed by a single <code>delete-stack</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>The boundary policy</div>
+        <div class="role">Allows only <code>s3:Get*</code> and <code>s3:List*</code>. <b>Why:</b> a permission boundary <em>grants nothing</em>. It sets a ceiling, and effective permissions become the <b>intersection</b> of the identity policy and the boundary.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>The over-broad policy</div>
+        <div class="role">Allows <code>s3:*</code> and <code>ec2:*</code> on <code>*</code>. <b>Why:</b> deliberately alarming, and attached identically to both roles. Any difference in what they can do comes from something other than this policy.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Bounded role</div>
+        <div class="role">The over-broad policy <em>plus</em> the boundary. <b>Why:</b> effective permissions collapse to S3 reads. Every EC2 action and every S3 write is refused, even though the attached policy plainly allows them.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>Unbounded role</div>
+        <div class="role">The same over-broad policy, no boundary. <b>Why:</b> the control case. Comparing the two in the simulator isolates the boundary as the only variable — which is what makes this a demonstration rather than a claim.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>ABAC role</div>
+        <div class="role">May start and stop instances only where <code>aws:ResourceTag/team</code> equals its own <code>aws:PrincipalTag/team</code>. <b>Why:</b> one policy that works for any number of teams. Attribute-based access control is how you stop writing a policy per team, and it scales where role-per-team does not.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>The vault bucket</div>
+        <div class="role">Carries a resource policy with two statements. <b>Why:</b> it is the stage for the other two lessons — one statement denies a role by name, the other grants a role that has no S3 permissions of its own.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>The policy simulator</div>
+        <div class="role"><code>iam simulate-principal-policy</code>, called read-only. <b>Why:</b> it evaluates a request exactly as IAM would, without performing it, and returns <code>allowed</code>, <code>implicitDeny</code> or <code>explicitDeny</code> — the three outcomes this whole lab is about.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 470" role="img" aria-label="IAM evaluation: an over-broad policy attached to two roles, one clamped by a permission boundary, and a bucket resource policy that explicitly denies one role and grants another.">
+        <rect class="d-bg" x="0" y="0" width="760" height="470"/>
+
+        <rect class="region" x="8" y="16" width="744" height="438" rx="8"/>
+        <text class="zone-lbl" x="20" y="36" fill="#545B64">ACCOUNT 213104855858 · IAM IS GLOBAL, NOT REGIONAL</text>
+
+        <rect class="tile-o" x="286" y="56" width="188" height="44" rx="4"/>
+        <text class="t-lbli" x="380" y="76">Over-broad policy</text>
+        <text class="t-subd" x="380" y="91">s3:* and ec2:* on *</text>
+
+        <rect class="tile" x="60" y="168" width="200" height="56" rx="4"/>
+        <text class="t-lbl" x="160" y="190">Bounded role</text>
+        <text class="t-sub" x="160" y="206">policy + boundary</text>
+
+        <rect class="tile" x="500" y="168" width="200" height="56" rx="4"/>
+        <text class="t-lbl" x="600" y="190">Unbounded role</text>
+        <text class="t-sub" x="600" y="206">policy only</text>
+
+        <rect class="tile-w" x="60" y="256" width="200" height="42" rx="4"/>
+        <text class="t-lbli" x="160" y="273" style="font-size:10px">EFFECTIVE: s3 read only</text>
+        <text class="flow" x="160" y="288" text-anchor="middle">ec2:* → implicitDeny</text>
+
+        <rect class="tile-w" x="500" y="256" width="200" height="42" rx="4"/>
+        <text class="t-lbli" x="600" y="273" style="font-size:10px">EFFECTIVE: s3:* + ec2:*</text>
+        <text class="flow" x="600" y="288" text-anchor="middle">ec2:* → allowed</text>
+
+        <rect class="tile-p" x="60" y="86" width="200" height="40" rx="4"/>
+        <text class="t-lbl" x="160" y="103">Permission boundary</text>
+        <text class="t-sub" x="160" y="117">ceiling: s3:Get* s3:List*</text>
+
+        <rect class="tile-b" x="286" y="350" width="188" height="74" rx="4"/>
+        <text class="t-lbl" x="380" y="374">Vault bucket</text>
+        <text class="t-sub" x="380" y="390">resource policy:</text>
+        <text class="t-sub" x="380" y="403">Deny unbounded role</text>
+        <text class="t-sub" x="380" y="416">Allow ABAC role</text>
+
+        <path class="ln-o" d="M340,100 H160 V164" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M420,100 H600 V164" marker-end="url(#arrow-o)"/>
+        <path class="ln-async" d="M160,126 V164" marker-end="url(#arrow-a)"/>
+
+        <path class="ln" d="M160,224 V252" marker-end="url(#arrow)"/>
+        <path class="ln" d="M600,224 V252" marker-end="url(#arrow)"/>
+
+        <path class="ln" d="M600,298 V346 H478" marker-end="url(#arrow)"/>
+        <text class="flow" x="486" y="326">s3:GetObject here →</text>
+        <text class="flow" x="486" y="338">explicitDeny, always</text>
+
+        <text class="flow" x="24" y="326">Same policy. Same account.</text>
+        <text class="flow" x="24" y="338">Opposite outcomes — the</text>
+        <text class="flow" x="24" y="350">boundary is the only</text>
+        <text class="flow" x="24" y="362">difference between them.</text>
+
+        <text class="flow" x="24" y="400">An explicit Deny in ANY</text>
+        <text class="flow" x="24" y="412">policy beats every Allow</text>
+        <text class="flow" x="24" y="424">anywhere — including an</text>
+        <text class="flow" x="24" y="436">administrator policy.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — The two roles at the top receive the identical orange policy. The purple boundary clamps the left one to the intersection, and the white boxes show what each can actually do. The grey line at the bottom is the unbounded role reaching for the bucket and being explicitly denied by the resource policy, regardless of what its identity policy says.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = role</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Identity policy</div>
+        <div class="it"><span class="chip" style="background:#8B5CF6"></span>Boundary (a ceiling)</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Principal</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Resource with its own policy</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Effective permissions</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Policy attachment</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Boundary applied</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Attempted access</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow — how a request is evaluated</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">A principal makes a request. AWS gathers <b>every</b> policy that applies: identity policies, resource policies, permission boundaries, session policies, and service control policies if the account is in an Organization.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd"><b>Explicit deny wins immediately.</b> If any policy contains a matching <code>Deny</code>, evaluation stops and the request fails. Nothing overrides this — not an administrator policy, not the account root.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd">Service control policies are checked next. An SCP that does not allow the action stops the request even for the root user of that account.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd"><b>Permission boundaries are checked.</b> If a boundary is attached and does not allow the action, the request is denied — this is where the bounded role loses every EC2 action.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">Identity and resource policies are evaluated. Within the same account, an allow in <b>either</b> is sufficient — which is why the ABAC role can read the vault with no S3 permission of its own.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">If nothing allowed the action, the result is <b>implicit deny</b>: the default. This is the difference the simulator reports between <code>implicitDeny</code> (nobody granted it) and <code>explicitDeny</code> (somebody forbade it).</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">How do you let a team create roles without letting them escalate privilege?</div>
+      <div class="row"><div class="opt no">Give them <code>iam:*</code> and trust them</div><div class="rea">Anyone who can create a role and attach a policy can grant themselves administrator. This is privilege escalation by design, and it is the classic finding in an access review.</div></div>
+      <div class="row"><div class="opt no">Approve every role by hand</div><div class="rea">Safe and unscalable. It makes the security team a queue, and teams route around queues.</div></div>
+      <div class="row"><div class="opt yes">Require a permission boundary on roles they create</div><div class="rea">Chosen. A condition requiring <code>iam:PermissionsBoundary</code> on <code>CreateRole</code> means every role they make is capped, whatever policy they attach. This is the canonical use of boundaries and a frequent exam scenario.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">How do you grant access per team as the number of teams grows?</div>
+      <div class="row"><div class="opt no">One policy and one role per team</div><div class="rea">Role-based access control. Correct, and it multiplies: twenty teams means twenty policies to write, review and keep consistent as resources change.</div></div>
+      <div class="row"><div class="opt yes">One policy with tag conditions</div><div class="rea">Chosen. <code>aws:ResourceTag/team</code> matched against <code>aws:PrincipalTag/team</code> is a single policy that works for every team, now and for teams that do not exist yet. The cost is that tagging discipline becomes a security control.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">The order, in one line</span>
+      <strong>Explicit deny → SCPs → permission boundaries → identity and resource policies →
+      implicit deny.</strong> Almost every IAM exam question is answerable by walking this list.
+      "Why can't this role do X when the policy allows it?" is a boundary or an explicit deny.
+      "Why can this role do X when its policy never mentions it?" is a resource policy.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">No IAM users and no access keys exist anywhere in this curriculum — every principal is a role assumed for temporary credentials. The bucket blocks all public access, and the only data it will ever hold is a test file you put there.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">The relevant limits are quotas: 5,000 roles per account, 10 managed policies per role, 6,144 characters per managed policy. Policy size is the one teams actually hit, and it is why broad resource patterns and ABAC beat long literal lists.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">IAM's failure mode is rarely an outage — it is a policy that grants more than intended. Changes are <b>eventually consistent</b>, so a fresh policy may take seconds to apply everywhere, which makes "I fixed it but it still fails" a real and confusing experience.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">None. IAM roles, policies, the simulator, and Access Analyzer's external-access findings are all free. This lab is the one place in the curriculum where leaving the stack running costs nothing whatsoever.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min, $0</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Under a minute.</b> IAM resources are records, not machines. Note that CloudFormation requires <code>CAPABILITY_NAMED_IAM</code> here because the roles have explicit names.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Run the simulator against both roles for the same action. Identical policies, opposite answers — that gap is the boundary, and seeing it stated as <code>implicitDeny</code> versus <code>allowed</code> makes it concrete.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Attempt <code>s3:GetObject</code> on the vault as the unbounded role and get <code>explicitDeny</code>. Then attach an administrator policy to that role in the console and try again — <b>it is still denied</b>, which is the entire point of explicit deny.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">Under a minute. The bucket must be empty first if you uploaded a test object.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>The exact words <code>implicitDeny</code> and <code>explicitDeny</code>. They are different failures with different fixes, and the simulator is the only place you see the distinction plainly.</li>
+            <li>That the bounded role loses <code>s3:PutObject</code> too, not just EC2. The boundary allows <code>s3:Get*</code> and <code>s3:List*</code> — a write was never inside it.</li>
+            <li>The ABAC role reading the vault with no S3 statement in its own policy. That access comes entirely from the bucket's resource policy.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never use a permission boundary as a way to <em>grant</em> permissions. A boundary alone
+          gives a principal nothing at all — attach a boundary with no identity policy and the role
+          can do <b>nothing</b>. Boundaries only ever subtract. The mirror-image mistake is assuming
+          a boundary protects a role that has no boundary attached: it applies to the principal that
+          carries it, and to nothing else.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / hour</th><th style="text-align:right">Per month</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>IAM roles, managed policies, boundaries</td><td class="n">0.0000</td><td class="n">0.0000</td><td>IAM is free, always</td></tr>
+        <tr><td>Policy simulator calls</td><td class="n">0.0000</td><td class="n">0.0000</td><td>Also free</td></tr>
+        <tr><td>S3 bucket (empty)</td><td class="n">0.0000</td><td class="n">0.0000</td><td>Storage only, and there is none</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.0000</td><td class="n">0.0000</td><td>Genuinely nothing</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> No service control policies — they need AWS
+    Organizations, and a single account cannot show them. Worth knowing regardless: an SCP is
+    another ceiling, applied to an entire account, and like a boundary it grants nothing. No
+    federation or IAM Identity Center, which is how real organisations avoid IAM users entirely. No
+    cross-account role assumption, though the mechanism is exactly the trust policy already on these
+    roles, pointed at a different account number.</p>
+
+    <div class="callout warn">
+      <span class="ct">The two questions to ask of any IAM problem</span>
+      <strong>First: is something explicitly denying it?</strong> Check resource policies, boundaries
+      and SCPs, not just the identity policy — an explicit deny anywhere ends the discussion.
+      <strong>Second: is anything actually allowing it?</strong> An action nobody granted fails by
+      default, and an empty result from the simulator means implicit deny, not a broken simulator.
+      Nearly every real IAM incident is one of these two, and the simulator answers both in seconds.
+    </div>
+  </div>

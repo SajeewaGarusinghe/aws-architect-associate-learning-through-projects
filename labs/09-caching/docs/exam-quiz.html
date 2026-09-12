@@ -1,4 +1,4 @@
-<title>VPC Exam Drill</title>
+<title>Caching And Performance Drill</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -102,9 +102,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">SAA-C03 · Lab 01</div>
-    <h1>VPC Exam Drill</h1>
-    <p>Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.</p>
+    <div class="eyebrow">SAA-C03 · Lab 09</div>
+    <h1>Caching And Performance Drill</h1>
+    <p>Twelve scenario questions on caching layers, ElastiCache, VPC endpoints and Lambda networking. Answer cold — the explanation appears after each choice.</p>
     <div class="bar">
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="tally" id="tally"><b>0</b>/12 correct</div>
@@ -113,142 +113,142 @@
 
   <div id="stage"></div>
 
-  <footer>Drawn from Lab 01 — VPC from scratch. Reference notes: exam-notes.md</footer>
+  <footer>Drawn from Lab 09 — Cache-aside, measured. Reference notes: exam-notes.md</footer>
 </div>
 
 <script>
 const Q = [
  {
-  "q": "An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+  "q": "A Lambda function is attached to a VPC so it can reach an ElastiCache cluster. It must also read from DynamoDB. What is the cheapest way to give it that access?",
   "options": [
-   "The instance needs an Elastic IP instead of an auto-assigned public IP",
-   "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
-   "The instance needs a NAT gateway to reach the internet",
-   "DNS hostnames are disabled on the VPC"
+   "A NAT gateway in a public subnet",
+   "A DynamoDB gateway endpoint in the private route table",
+   "An interface endpoint for DynamoDB in each subnet",
+   "An internet gateway with a public IP on the function"
   ],
   "answer": 1,
-  "why": "A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> \u2014 that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."
+  "why": "A <strong>gateway endpoint is free</strong> \u2014 it is a prefix-list route, not an ENI \u2014 and exists for exactly two services: <strong>S3 and DynamoDB</strong>. A NAT gateway would cost $0.059/hour to send AWS traffic out to the internet and back. Interface endpoints bill hourly per AZ. Lambda functions cannot have public IPs."
  },
  {
-  "q": "Instances in a private subnet cannot complete outbound HTTPS requests \u2014 connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+  "q": "An application caches query results in Redis with a 60-second TTL. What does the TTL primarily control?",
   "options": [
-   "Add an inbound rule for TCP 443 to the security group",
-   "Add an inbound network ACL rule allowing TCP 1024\u201365535 from <code>0.0.0.0/0</code>",
-   "Add an outbound rule for ephemeral ports to the security group",
-   "Replace the custom network ACL with the default network ACL"
+   "How much memory the cache may use",
+   "The maximum time a reader may see data that no longer matches the database",
+   "How long a client waits before timing out",
+   "How frequently the cache replicates to its replica"
   ],
   "answer": 1,
-  "why": "Network ACLs are <strong>stateless</strong> \u2014 each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024\u201365535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."
+  "why": "The TTL is the <strong>staleness bound</strong> \u2014 the contract about how out of date an answer may be. Choosing it is a business decision, not a technical one: how wrong can this value be before it matters? Memory pressure is handled separately by the eviction policy."
  },
  {
-  "q": "Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+  "q": "A team needs a cache supporting replication, Multi-AZ automatic failover, sorted sets for a leaderboard, and pub/sub. Which engine fits?",
   "options": [
-   "Create an interface endpoint for S3",
-   "Create a gateway endpoint for S3",
-   "Move the instances to a public subnet",
-   "Add a second NAT gateway to spread the load"
+   "Memcached",
+   "Redis",
+   "DynamoDB DAX",
+   "CloudFront"
   ],
   "answer": 1,
-  "why": "Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."
+  "why": "<strong>Redis</strong> supports replication, Multi-AZ failover, persistence, transactions and rich data structures including sorted sets and pub/sub. <strong>Memcached</strong> is a simple multi-threaded key/value cache with no persistence, replication or failover. Leaderboards, pub/sub and high availability all point to Redis."
  },
  {
-  "q": "A security policy forbids any internet path from a private subnet \u2014 no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+  "q": "In the cache-aside pattern, what happens when the cache becomes unavailable?",
   "options": [
-   "<code>ssm</code> only",
-   "<code>ssm</code> and <code>ec2</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"
-  ],
-  "answer": 2,
-  "why": "All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."
- },
- {
-  "q": "One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
-  "options": [
-   "They continue normally; NAT gateways are regional",
-   "They lose outbound internet connectivity",
-   "They automatically fail over to an internet gateway",
-   "They lose all connectivity, including to other subnets in the VPC"
+   "The application fails, because the cache is on the critical path",
+   "Requests fall through to the database \u2014 slower, but still correct",
+   "Writes are queued until the cache returns",
+   "The database is bypassed and stale data is served"
   ],
   "answer": 1,
-  "why": "A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it \u2014 and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."
+  "why": "In cache-aside the application checks the cache and falls back to the system of record on a miss \u2014 so a cache outage costs <strong>latency and a burst of database load, never data</strong>. A cache whose failure takes the service down is not a cache; it is a dependency, and that is a design error."
  },
  {
-  "q": "How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+  "q": "A DynamoDB-backed application needs microsecond read latency without changing application code. What should be used?",
   "options": [
-   "256",
-   "254",
-   "251",
-   "250"
-  ],
-  "answer": 2,
-  "why": "A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 \u2014 the on-premises networking answer."
- },
- {
-  "q": "Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
-  "options": [
-   "It succeeds; the more specific route wins",
-   "It succeeds, but only one direction works",
-   "It fails \u2014 peered VPCs cannot have overlapping CIDR blocks",
-   "It succeeds if a transit gateway is used instead"
-  ],
-  "answer": 2,
-  "why": "Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build \u2014 it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."
- },
- {
-  "q": "Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
-  "options": [
-   "A NAT gateway",
-   "An egress-only internet gateway",
-   "An internet gateway with a restrictive network ACL",
-   "A NAT instance with source/destination checking disabled"
+   "ElastiCache for Redis in front of DynamoDB",
+   "DynamoDB Accelerator (DAX)",
+   "A CloudFront distribution over the API",
+   "DynamoDB on-demand capacity"
   ],
   "answer": 1,
-  "why": "An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."
+  "why": "<strong>DAX</strong> is a DynamoDB-specific, write-through cache that is API-compatible with DynamoDB, so it requires essentially no code change and delivers microsecond reads. ElastiCache would work but requires implementing cache-aside yourself. On-demand capacity is a billing mode and changes nothing about latency."
  },
  {
-  "q": "A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+  "q": "Why does attaching a Lambda function to a VPC potentially limit its concurrency?",
   "options": [
-   "Rejected inbound SSH attempts",
-   "Traffic between two instances in different subnets of the same VPC",
-   "Requests to the instance metadata service at <code>169.254.169.254</code>",
-   "Outbound HTTPS traffic to the internet through a NAT gateway"
-  ],
-  "answer": 2,
-  "why": "Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic \u2014 the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."
- },
- {
-  "q": "A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
-  "options": [
-   "A security group inbound deny rule",
-   "A network ACL inbound deny rule",
-   "A security group with the IP removed from the allow list",
-   "An egress-only internet gateway"
+   "VPC functions are capped at 100 concurrent executions",
+   "Each concurrent execution needs an elastic network interface, so subnet IP space becomes a limit",
+   "VPC functions may only run in one availability zone",
+   "The VPC's route table limits concurrent connections"
   ],
   "answer": 1,
-  "why": "Security groups support <strong>allow rules only</strong> \u2014 there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."
+  "why": "A VPC-attached function runs behind ENIs in your subnets, and those consume IP addresses. Undersized subnets therefore become a hard ceiling on concurrency \u2014 a genuine production surprise. Modern Lambda shares ENIs far more efficiently than it once did, but address planning still matters."
  },
  {
-  "q": "A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+  "q": "Which statement about putting a Lambda function in a VPC is correct?",
   "options": [
-   "A NAT gateway",
-   "A NAT instance",
-   "An egress-only internet gateway",
-   "An internet gateway"
+   "It improves security when calling S3 and DynamoDB",
+   "It should only be done when the function must reach resources that exist only in the VPC",
+   "It is required for any function handling sensitive data",
+   "It gives the function a public IP address"
   ],
   "answer": 1,
-  "why": "A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither \u2014 only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."
+  "why": "S3, DynamoDB, SQS and most AWS services are <strong>not in your VPC</strong>, and a function calling them is no safer inside one. Attaching a VPC costs internet access (unless you add NAT), consumes ENIs and subnet addresses, and adds complexity. Do it only to reach RDS, ElastiCache or other VPC-only resources."
  },
  {
-  "q": "A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+  "q": "An ElastiCache node fails and the cache is empty when it returns. Every request now misses and hits the database simultaneously. What is this called, and what mitigates it?",
   "options": [
-   "NAT gateways bill per connection, and idle connections still count",
-   "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
-   "The Elastic IP is billed at a premium when attached to a NAT gateway",
-   "NAT gateways bill a minimum of 1 TB of data processing per month"
+   "Cache poisoning \u2014 mitigated by shorter TTLs",
+   "A thundering herd or cache stampede \u2014 mitigated by Multi-AZ replicas and staggered TTLs",
+   "Cache eviction \u2014 mitigated by a larger node",
+   "A cold start \u2014 mitigated by provisioned concurrency"
   ],
   "answer": 1,
-  "why": "A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> \u2014 about <strong>$43/month idle</strong> \u2014 plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."
+  "why": "An empty cache sending every request to the database at once is a <strong>thundering herd</strong>. Mitigations: a replica with automatic failover so the cache is never wholly lost, jittered TTLs so entries do not expire together, and request coalescing so only one caller repopulates a given key."
+ },
+ {
+  "q": "Which caching layer is appropriate for caching whole HTTP responses close to end users worldwide?",
+  "options": [
+   "ElastiCache for Redis",
+   "CloudFront",
+   "DynamoDB DAX",
+   "An Application Load Balancer"
+  ],
+  "answer": 1,
+  "why": "<strong>CloudFront</strong> caches HTTP responses at roughly 600 edge locations, close to users. ElastiCache caches arbitrary application data beside the application, in one region. DAX caches DynamoDB items specifically. Load balancers distribute requests; they do not cache."
+ },
+ {
+  "q": "A read-heavy RDS database is CPU-saturated. The application cannot be changed to use a cache. What is the most appropriate scaling action?",
+  "options": [
+   "Enable Multi-AZ",
+   "Add read replicas and direct read traffic to them",
+   "Enable point-in-time recovery",
+   "Increase the backup retention period"
+  ],
+  "answer": 1,
+  "why": "<strong>Read replicas</strong> add read capacity \u2014 that is precisely what they are for. Multi-AZ adds a standby that serves no traffic and solves availability, not scale. Directing reads at replicas still requires an application or proxy change, but it is the only listed option that adds capacity."
+ },
+ {
+  "q": "Which two AWS services support gateway VPC endpoints?",
+  "options": [
+   "S3 and DynamoDB",
+   "S3 and RDS",
+   "DynamoDB and SQS",
+   "All AWS services support them"
+  ],
+  "answer": 0,
+  "why": "Gateway endpoints exist only for <strong>S3 and DynamoDB</strong>. They are free, implemented as prefix-list routes in a route table rather than as network interfaces, and cannot be reached from on-premises over VPN or Direct Connect. Every other service uses interface endpoints (PrivateLink), which bill hourly per AZ but do work over Direct Connect."
+ },
+ {
+  "q": "An ElastiCache cluster's memory fills up. What determines which items are removed?",
+  "options": [
+   "Items are never removed; writes fail instead",
+   "The eviction policy, commonly least-recently-used among keys with a TTL",
+   "The oldest items by creation date, always",
+   "Items are moved to disk automatically"
+  ],
+  "answer": 1,
+  "why": "The <strong>eviction policy</strong> decides \u2014 typically <code>volatile-lru</code> (least recently used among keys that have a TTL) or <code>allkeys-lru</code>. A cluster with no eviction policy and no free memory will start rejecting writes, which looks like an application bug rather than a capacity problem."
  }
 ];
 

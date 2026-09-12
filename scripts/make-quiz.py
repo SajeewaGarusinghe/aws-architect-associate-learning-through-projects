@@ -262,16 +262,28 @@ def write_notes(spec, path, extra_path):
     L.append(f"# Exam notes — {spec['notes_title']}\n")
     L.append(spec["notes_intro"] + "\n")
     L.append("---\n")
+    # The rendered drill shuffles options in the browser; the notes are static,
+    # so shuffle here too or every printed answer lands on the same letter.
+    # Seeded from the question text, so regenerating produces the same notes.
+    import hashlib, random
+    orders = []
+    for q in spec["questions"]:
+        seed = int(hashlib.sha256(q["q"].encode()).hexdigest()[:8], 16)
+        order = list(range(len(q["options"])))
+        random.Random(seed).shuffle(order)
+        orders.append(order)
+
     L.append("## Questions\n")
-    for n, q in enumerate(spec["questions"], 1):
+    for n, (q, order) in enumerate(zip(spec["questions"], orders), 1):
         L.append(f"**{n}.** {to_markdown(q['q'])}\n")
-        for i, opt in enumerate(q["options"]):
-            L.append(f"- {LETTERS[i]}. {to_markdown(opt)}")
+        for pos, orig in enumerate(order):
+            L.append(f"- {LETTERS[pos]}. {to_markdown(q['options'][orig])}")
         L.append("")
     L.append("---\n")
     L.append("## Answers\n")
-    for n, q in enumerate(spec["questions"], 1):
-        L.append(f"**{n} — {LETTERS[q['answer']]}.** {to_markdown(q['why'])}\n")
+    for n, (q, order) in enumerate(zip(spec["questions"], orders), 1):
+        letter = LETTERS[order.index(q["answer"])]
+        L.append(f"**{n} — {letter}.** {to_markdown(q['why'])}\n")
     if extra_path and extra_path.exists():
         L.append("---\n")
         L.append(extra_path.read_text().strip() + "\n")

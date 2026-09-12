@@ -1,4 +1,4 @@
-<title>VPC Exam Drill</title>
+<title>IAM Evaluation Drill</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -102,9 +102,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">SAA-C03 · Lab 01</div>
-    <h1>VPC Exam Drill</h1>
-    <p>Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.</p>
+    <div class="eyebrow">SAA-C03 · Lab 07</div>
+    <h1>IAM Evaluation Drill</h1>
+    <p>Twelve scenario questions on policy evaluation, boundaries, roles and cross-account access. Answer cold — the explanation appears after each choice.</p>
     <div class="bar">
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="tally" id="tally"><b>0</b>/12 correct</div>
@@ -113,142 +113,142 @@
 
   <div id="stage"></div>
 
-  <footer>Drawn from Lab 01 — VPC from scratch. Reference notes: exam-notes.md</footer>
+  <footer>Drawn from Lab 07 — How IAM actually decides. Reference notes: exam-notes.md</footer>
 </div>
 
 <script>
 const Q = [
  {
-  "q": "An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+  "q": "A role has an identity policy allowing `s3:*`. The bucket's resource policy contains an explicit Deny for that role's ARN. The role also has AdministratorAccess attached. Can it read the bucket?",
   "options": [
-   "The instance needs an Elastic IP instead of an auto-assigned public IP",
-   "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
-   "The instance needs a NAT gateway to reach the internet",
-   "DNS hostnames are disabled on the VPC"
+   "Yes \u2014 AdministratorAccess overrides resource policies",
+   "No \u2014 an explicit Deny anywhere overrides every Allow",
+   "Yes \u2014 identity policies take precedence over resource policies",
+   "Only if the request comes from inside the VPC"
   ],
   "answer": 1,
-  "why": "A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> \u2014 that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."
+  "why": "<strong>Explicit deny wins, always.</strong> It is evaluated first and nothing overrides it \u2014 not AdministratorAccess, not the account root, not a resource policy allow. This is the first rule of IAM evaluation and the most reliably tested one."
  },
  {
-  "q": "Instances in a private subnet cannot complete outbound HTTPS requests \u2014 connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+  "q": "A role has an identity policy allowing `s3:*` and `ec2:*`, and a permission boundary allowing only `s3:Get*` and `s3:List*`. What can the role actually do?",
   "options": [
-   "Add an inbound rule for TCP 443 to the security group",
-   "Add an inbound network ACL rule allowing TCP 1024\u201365535 from <code>0.0.0.0/0</code>",
-   "Add an outbound rule for ephemeral ports to the security group",
-   "Replace the custom network ACL with the default network ACL"
+   "Everything in the identity policy \u2014 boundaries only apply to users",
+   "Only s3:Get* and s3:List* \u2014 the intersection of policy and boundary",
+   "Everything in the boundary, plus ec2:*",
+   "Nothing, because the two conflict"
   ],
   "answer": 1,
-  "why": "Network ACLs are <strong>stateless</strong> \u2014 each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024\u201365535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."
+  "why": "Effective permissions are the <strong>intersection</strong> of the identity policy and the boundary. The boundary is a ceiling that grants nothing on its own \u2014 every EC2 action and every S3 write falls outside it and is denied, even though the identity policy plainly allows them."
  },
  {
-  "q": "Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+  "q": "A permission boundary allowing `s3:*` is attached to a role that has no identity policy at all. What can the role do?",
   "options": [
-   "Create an interface endpoint for S3",
-   "Create a gateway endpoint for S3",
-   "Move the instances to a public subnet",
-   "Add a second NAT gateway to spread the load"
+   "Everything in S3, since the boundary allows it",
+   "Nothing \u2014 a boundary grants no permissions",
+   "Only read operations in S3",
+   "Everything, because an empty identity policy means unrestricted"
   ],
   "answer": 1,
-  "why": "Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."
+  "why": "A boundary <strong>only ever subtracts</strong>. With no identity policy there is nothing to intersect with, so the effective permission set is empty and the role can do nothing. Treating a boundary as a way to grant access is the classic misunderstanding."
  },
  {
-  "q": "A security policy forbids any internet path from a private subnet \u2014 no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+  "q": "A team must be able to create IAM roles for their applications without being able to grant those roles more access than the security team permits. What is the standard approach?",
   "options": [
-   "<code>ssm</code> only",
-   "<code>ssm</code> and <code>ec2</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"
-  ],
-  "answer": 2,
-  "why": "All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."
- },
- {
-  "q": "One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
-  "options": [
-   "They continue normally; NAT gateways are regional",
-   "They lose outbound internet connectivity",
-   "They automatically fail over to an internet gateway",
-   "They lose all connectivity, including to other subnets in the VPC"
+   "Grant them iam:* and audit role creation with CloudTrail",
+   "Require a permission boundary on any role they create, enforced by a condition on iam:CreateRole",
+   "Give them read-only IAM access and create roles on their behalf",
+   "Apply a service control policy to their IAM user"
   ],
   "answer": 1,
-  "why": "A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it \u2014 and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."
+  "why": "A condition requiring <code>iam:PermissionsBoundary</code> on <code>CreateRole</code> means every role they create is capped, whatever policy they attach. This is the canonical use of boundaries: delegating role creation without enabling privilege escalation. Auditing after the fact does not prevent it."
  },
  {
-  "q": "How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+  "q": "An EC2 instance in Account A must read an S3 bucket in Account B. What is the recommended mechanism?",
   "options": [
-   "256",
-   "254",
-   "251",
-   "250"
-  ],
-  "answer": 2,
-  "why": "A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 \u2014 the on-premises networking answer."
- },
- {
-  "q": "Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
-  "options": [
-   "It succeeds; the more specific route wins",
-   "It succeeds, but only one direction works",
-   "It fails \u2014 peered VPCs cannot have overlapping CIDR blocks",
-   "It succeeds if a transit gateway is used instead"
-  ],
-  "answer": 2,
-  "why": "Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build \u2014 it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."
- },
- {
-  "q": "Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
-  "options": [
-   "A NAT gateway",
-   "An egress-only internet gateway",
-   "An internet gateway with a restrictive network ACL",
-   "A NAT instance with source/destination checking disabled"
+   "Create an IAM user in Account B and put its access keys on the instance",
+   "A role in Account B that the instance's role assumes, or a bucket policy granting the instance role",
+   "Make the bucket public and restrict by IP",
+   "Enable cross-region replication into Account A"
   ],
   "answer": 1,
-  "why": "An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."
+  "why": "Either <strong>cross-account role assumption</strong> \u2014 a role in B trusting A, assumed via STS \u2014 or a <strong>bucket policy in B</strong> naming the instance's role directly. Both avoid long-lived credentials. Access keys on an instance are the anti-pattern the instance role exists to eliminate."
  },
  {
-  "q": "A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+  "q": "The policy simulator reports `implicitDeny` for an action. What does that mean?",
   "options": [
-   "Rejected inbound SSH attempts",
-   "Traffic between two instances in different subnets of the same VPC",
-   "Requests to the instance metadata service at <code>169.254.169.254</code>",
-   "Outbound HTTPS traffic to the internet through a NAT gateway"
-  ],
-  "answer": 2,
-  "why": "Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic \u2014 the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."
- },
- {
-  "q": "A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
-  "options": [
-   "A security group inbound deny rule",
-   "A network ACL inbound deny rule",
-   "A security group with the IP removed from the allow list",
-   "An egress-only internet gateway"
+   "A policy explicitly denied the action",
+   "No policy allowed the action, so the default deny applies",
+   "The simulator could not evaluate the request",
+   "A service control policy blocked it"
   ],
   "answer": 1,
-  "why": "Security groups support <strong>allow rules only</strong> \u2014 there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."
+  "why": "<strong>Implicit deny</strong> is the default: nothing granted the action. <strong>Explicit deny</strong> means a policy actively forbade it. They need different fixes \u2014 an implicit deny is solved by adding an allow, an explicit deny by finding and removing the Deny statement, which no amount of additional allows will overcome."
  },
  {
-  "q": "A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+  "q": "A company has 40 teams and wants each to manage only its own EC2 instances, without writing 40 policies. Which approach fits best?",
   "options": [
-   "A NAT gateway",
-   "A NAT instance",
-   "An egress-only internet gateway",
-   "An internet gateway"
+   "One IAM group per team with a team-specific policy",
+   "Attribute-based access control using tag conditions",
+   "A permission boundary per team",
+   "One shared role with a very long policy listing every instance"
   ],
   "answer": 1,
-  "why": "A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither \u2014 only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."
+  "why": "<strong>ABAC</strong> matches <code>aws:ResourceTag/team</code> against <code>aws:PrincipalTag/team</code> in a single policy that works for every team \u2014 including teams that do not exist yet. The trade-off is that tagging discipline becomes a security control. Role-per-team is correct but multiplies the policies to maintain."
  },
  {
-  "q": "A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+  "q": "Which credential type does an application running on EC2 receive when it uses an instance profile?",
   "options": [
-   "NAT gateways bill per connection, and idle connections still count",
-   "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
-   "The Elastic IP is billed at a premium when attached to a NAT gateway",
-   "NAT gateways bill a minimum of 1 TB of data processing per month"
+   "A permanent access key and secret stored in the instance metadata",
+   "Temporary credentials that are automatically rotated",
+   "The credentials of the user who launched the instance",
+   "A password stored in Secrets Manager"
   ],
   "answer": 1,
-  "why": "A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> \u2014 about <strong>$43/month idle</strong> \u2014 plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."
+  "why": "The instance profile delivers <strong>temporary credentials via STS</strong>, retrieved from the instance metadata service and rotated automatically before expiry. Nothing long-lived exists to leak or rotate \u2014 which is exactly why instance roles beat access keys in every scenario the exam presents."
+ },
+ {
+  "q": "An SCP attached to an account denies `s3:DeleteBucket`. A user in that account has AdministratorAccess. Can they delete a bucket?",
+  "options": [
+   "Yes \u2014 AdministratorAccess is evaluated after SCPs",
+   "No \u2014 an SCP sets a ceiling the account cannot exceed, including for root",
+   "Only if they use the root user",
+   "Only from the AWS console, not the CLI"
+  ],
+  "answer": 1,
+  "why": "A <strong>service control policy</strong> is a ceiling on an entire account in an Organization. It grants nothing and cannot be overridden from inside the account \u2014 <strong>including by the account root user</strong>. Like a permission boundary, it only ever subtracts."
+ },
+ {
+  "q": "A role's trust policy determines what?",
+  "options": [
+   "What actions the role may perform",
+   "Which principals are allowed to assume the role",
+   "Which resources the role may access",
+   "How long the role's credentials remain valid"
+  ],
+  "answer": 1,
+  "why": "The <strong>trust policy</strong> (the assume-role policy document) says <em>who may become</em> the role. The <strong>permission policy</strong> says <em>what the role may do</em> once assumed. Both must permit the operation: a principal with <code>sts:AssumeRole</code> still fails if the trust policy does not name it."
+ },
+ {
+  "q": "Within a single account, an IAM role has no S3 permissions in its identity policy, but a bucket policy explicitly allows that role to GetObject. Can it read the object?",
+  "options": [
+   "No \u2014 the identity policy must also allow it",
+   "Yes \u2014 within one account, an allow in either policy is sufficient",
+   "Only if the bucket is in the same region",
+   "Only if the role has s3:ListBucket as well"
+  ],
+  "answer": 1,
+  "why": "<strong>Within the same account</strong>, an allow in the identity policy <em>or</em> the resource policy is enough. This is why S3 access can appear from nowhere when reading only the identity side. <strong>Cross-account is different</strong>: both the resource policy in the target account and the identity policy in the caller's account must allow it."
+ },
+ {
+  "q": "What is the practical difference between an IAM role and an IAM user?",
+  "options": [
+   "Roles are for AWS services, users are for people \u2014 nothing else differs",
+   "A user has long-lived credentials; a role is assumed and issues temporary credentials",
+   "Roles cannot have policies attached",
+   "Users can be assumed by services, roles cannot"
+  ],
+  "answer": 1,
+  "why": "A <strong>user</strong> is an identity with long-lived credentials \u2014 a password and/or access keys. A <strong>role</strong> has no credentials of its own: principals assume it and receive temporary STS credentials that expire. Current best practice is to avoid users almost entirely, using federation or instance/service roles instead."
  }
 ];
 

@@ -1,4 +1,4 @@
-<title>VPC Exam Drill</title>
+<title>Disaster Recovery Drill</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -102,9 +102,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">SAA-C03 · Lab 01</div>
-    <h1>VPC Exam Drill</h1>
-    <p>Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.</p>
+    <div class="eyebrow">SAA-C03 · Lab 08</div>
+    <h1>Disaster Recovery Drill</h1>
+    <p>Twelve scenario questions on RTO and RPO, DR strategies, Route 53 routing and backup mechanics. Answer cold — the explanation appears after each choice.</p>
     <div class="bar">
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="tally" id="tally"><b>0</b>/12 correct</div>
@@ -113,142 +113,142 @@
 
   <div id="stage"></div>
 
-  <footer>Drawn from Lab 01 — VPC from scratch. Reference notes: exam-notes.md</footer>
+  <footer>Drawn from Lab 08 — Failover and recovery points. Reference notes: exam-notes.md</footer>
 </div>
 
 <script>
 const Q = [
  {
-  "q": "An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+  "q": "A business states it can tolerate four hours of downtime but must not lose more than five minutes of data. Which pair of objectives does this describe?",
   "options": [
-   "The instance needs an Elastic IP instead of an auto-assigned public IP",
-   "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
-   "The instance needs a NAT gateway to reach the internet",
-   "DNS hostnames are disabled on the VPC"
+   "RTO 5 minutes, RPO 4 hours",
+   "RTO 4 hours, RPO 5 minutes",
+   "Both RTO and RPO are 4 hours",
+   "RTO 4 hours, with no RPO requirement"
   ],
   "answer": 1,
-  "why": "A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> \u2014 that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."
+  "why": "<strong>RTO is how long you are down</strong> \u2014 four hours here. <strong>RPO is how much data you may lose</strong> \u2014 five minutes. They are bought separately: a relaxed RTO permits a cheap strategy like pilot light, while a tight RPO demands continuous replication regardless."
  },
  {
-  "q": "Instances in a private subnet cannot complete outbound HTTPS requests \u2014 connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+  "q": "A company replicates its database continuously to a second region but keeps all application servers switched off there. In a disaster they start the servers and redirect traffic. Which DR strategy is this?",
   "options": [
-   "Add an inbound rule for TCP 443 to the security group",
-   "Add an inbound network ACL rule allowing TCP 1024\u201365535 from <code>0.0.0.0/0</code>",
-   "Add an outbound rule for ephemeral ports to the security group",
-   "Replace the custom network ACL with the default network ACL"
+   "Backup and restore",
+   "Pilot light",
+   "Warm standby",
+   "Multi-site active/active"
   ],
   "answer": 1,
-  "why": "Network ACLs are <strong>stateless</strong> \u2014 each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024\u201365535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."
+  "why": "<strong>Pilot light</strong>: the core data is always replicated and ready, but compute is off until needed. Recovery takes tens of minutes to start and scale. <strong>Warm standby</strong> keeps a scaled-down copy actually running. <strong>Backup and restore</strong> has nothing replicated continuously."
  },
  {
-  "q": "Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+  "q": "A Route 53 failover record has a TTL of 3600 seconds. The health check detects failure in 60 seconds. What is the realistic worst-case recovery time for an already-connected client?",
   "options": [
-   "Create an interface endpoint for S3",
-   "Create a gateway endpoint for S3",
-   "Move the instances to a public subnet",
-   "Add a second NAT gateway to spread the load"
+   "About 60 seconds",
+   "Up to roughly 61 minutes, because cached answers persist for the TTL",
+   "Immediate, because Route 53 pushes updates to resolvers",
+   "About 30 minutes, half the TTL"
   ],
   "answer": 1,
-  "why": "Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."
+  "why": "Detection plus caching. Route 53 changes its answer after ~60 seconds, but resolvers that already answered keep serving the old value <strong>until their cached TTL expires</strong> \u2014 up to an hour. The TTL is a floor on recovery time you set in advance, which is why failover records use short TTLs."
  },
  {
-  "q": "A security policy forbids any internet path from a private subnet \u2014 no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+  "q": "Which Route 53 routing policy sends users to the region that gives them the lowest response time?",
   "options": [
-   "<code>ssm</code> only",
-   "<code>ssm</code> and <code>ec2</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"
-  ],
-  "answer": 2,
-  "why": "All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."
- },
- {
-  "q": "One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
-  "options": [
-   "They continue normally; NAT gateways are regional",
-   "They lose outbound internet connectivity",
-   "They automatically fail over to an internet gateway",
-   "They lose all connectivity, including to other subnets in the VPC"
+   "Geolocation",
+   "Latency-based",
+   "Geoproximity",
+   "Weighted"
   ],
   "answer": 1,
-  "why": "A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it \u2014 and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."
+  "why": "<strong>Latency-based</strong> routing uses measured latency between the user and AWS regions. <strong>Geolocation</strong> routes by where the user is, which is about compliance and localisation rather than speed. <strong>Geoproximity</strong> routes by distance with an adjustable bias. <strong>Weighted</strong> splits by proportion, for canaries and migrations."
  },
  {
-  "q": "How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+  "q": "An engineer accidentally deletes rows from a DynamoDB table at 14:30. Point-in-time recovery is enabled. What can they do?",
   "options": [
-   "256",
-   "254",
-   "251",
-   "250"
-  ],
-  "answer": 2,
-  "why": "A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 \u2014 the on-premises networking answer."
- },
- {
-  "q": "Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
-  "options": [
-   "It succeeds; the more specific route wins",
-   "It succeeds, but only one direction works",
-   "It fails \u2014 peered VPCs cannot have overlapping CIDR blocks",
-   "It succeeds if a transit gateway is used instead"
-  ],
-  "answer": 2,
-  "why": "Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build \u2014 it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."
- },
- {
-  "q": "Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
-  "options": [
-   "A NAT gateway",
-   "An egress-only internet gateway",
-   "An internet gateway with a restrictive network ACL",
-   "A NAT instance with source/destination checking disabled"
+   "Undo the deletion in place on the existing table",
+   "Restore to a new table as it existed at any second within the last 35 days",
+   "Restore only from the most recent daily snapshot",
+   "Nothing \u2014 PITR only protects against infrastructure failure"
   ],
   "answer": 1,
-  "why": "An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."
+  "why": "PITR restores <strong>to a new table</strong> \u2014 never in place \u2014 at any second within the trailing 35 days. Note that it protects against <em>application</em> errors as much as infrastructure failure; a bad deploy writing garbage is the common case. The restore target being a new table means cutover is a deliberate step."
  },
  {
-  "q": "A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+  "q": "Which statement about enabling S3 versioning and DynamoDB PITR is correct?",
   "options": [
-   "Rejected inbound SSH attempts",
-   "Traffic between two instances in different subnets of the same VPC",
-   "Requests to the instance metadata service at <code>169.254.169.254</code>",
-   "Outbound HTTPS traffic to the internet through a NAT gateway"
-  ],
-  "answer": 2,
-  "why": "Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic \u2014 the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."
- },
- {
-  "q": "A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
-  "options": [
-   "A security group inbound deny rule",
-   "A network ACL inbound deny rule",
-   "A security group with the IP removed from the allow list",
-   "An egress-only internet gateway"
+   "Both can be enabled after an incident to recover prior data",
+   "Both must be enabled before the incident \u2014 they cannot recover data lost beforehand",
+   "Versioning is retroactive but PITR is not",
+   "Both are enabled by default on new resources"
   ],
   "answer": 1,
-  "why": "Security groups support <strong>allow rules only</strong> \u2014 there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."
+  "why": "Neither is retroactive. Versioning starts preserving versions from the moment it is switched on; PITR starts its continuous backup window then too. <strong>Turning them on after the mistake recovers nothing</strong> \u2014 which is why recovery point is a decision made long before the disaster, and why neither being on by default is worth knowing."
  },
  {
-  "q": "A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+  "q": "A Route 53 health check monitors an endpoint that returns 200 from a load balancer even when the database behind it is failing. What is the consequence?",
   "options": [
-   "A NAT gateway",
-   "A NAT instance",
-   "An egress-only internet gateway",
-   "An internet gateway"
+   "Route 53 fails over as soon as user requests error",
+   "The health check keeps passing, failover never triggers, and the outage continues",
+   "The health check times out and triggers failover",
+   "CloudWatch automatically overrides the health check"
   ],
   "answer": 1,
-  "why": "A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither \u2014 only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."
+  "why": "A health check only knows what the checked path tells it. A shallow check on <code>/</code> that does not touch the failing dependency <strong>keeps passing while the application is broken</strong>, so failover never happens. The check must exercise the dependency you are actually worried about \u2014 the same lesson as ALB health checks in Lab 02."
  },
  {
-  "q": "A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+  "q": "Which DR strategy has the lowest RTO, and what is the trade-off?",
   "options": [
-   "NAT gateways bill per connection, and idle connections still count",
-   "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
-   "The Elastic IP is billed at a premium when attached to a NAT gateway",
-   "NAT gateways bill a minimum of 1 TB of data processing per month"
+   "Backup and restore \u2014 lowest cost and lowest RTO",
+   "Multi-site active/active \u2014 near-zero RTO, at roughly double the running cost",
+   "Pilot light \u2014 near-zero RTO, at minimal cost",
+   "Warm standby \u2014 zero RTO with no additional cost"
   ],
   "answer": 1,
-  "why": "A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> \u2014 about <strong>$43/month idle</strong> \u2014 plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."
+  "why": "<strong>Multi-site active/active</strong> serves live traffic from both regions, so recovery is effectively immediate \u2014 and you pay for full capacity in both, plus the hardest engineering problem: keeping data consistent when both sides accept writes. RTO and cost trade against each other across all four strategies."
+ },
+ {
+  "q": "An application needs a relational database with cross-region disaster recovery, an RPO of about one second, and promotion of the secondary region in under a minute. What fits?",
+  "options": [
+   "RDS Multi-AZ",
+   "Aurora Global Database",
+   "RDS cross-region read replica",
+   "DynamoDB global tables"
+  ],
+  "answer": 1,
+  "why": "<strong>Aurora Global Database</strong> replicates cross-region with typically sub-second lag and promotes a secondary region in about a minute. RDS Multi-AZ is single-region and solves AZ failure only. A cross-region read replica works but has higher lag and slower manual promotion. DynamoDB global tables are excellent but not relational."
+ },
+ {
+  "q": "What is the purpose of an S3 delete marker in a versioned bucket?",
+  "options": [
+   "It permanently erases all versions of the object",
+   "It becomes the current version so the object appears deleted, while prior versions remain",
+   "It marks the object for lifecycle transition to Glacier",
+   "It prevents the object from being deleted"
+  ],
+  "answer": 1,
+  "why": "A delete on a versioned bucket inserts a <strong>delete marker</strong> as the new current version. The object appears gone, but every prior version still exists and still bills. Removing the marker restores the object \u2014 and this is also why a versioned bucket is not truly empty when teardown tries to delete it."
+ },
+ {
+  "q": "A company wants to centrally define and enforce backup schedules and retention across EC2, EBS, RDS, DynamoDB and EFS. Which service is designed for this?",
+  "options": [
+   "Amazon S3 lifecycle policies",
+   "AWS Backup",
+   "AWS Config",
+   "Amazon Data Lifecycle Manager"
+  ],
+  "answer": 1,
+  "why": "<strong>AWS Backup</strong> centralises backup plans, schedules, retention and cross-region copy across many services, with vaults and compliance reporting. Data Lifecycle Manager handles EBS snapshots only. Config reports on configuration compliance but takes no backups."
+ },
+ {
+  "q": "Which Route 53 routing policy would you use to send 10% of traffic to a new version of an application?",
+  "options": [
+   "Failover",
+   "Weighted",
+   "Multivalue answer",
+   "Geolocation"
+  ],
+  "answer": 1,
+  "why": "<strong>Weighted</strong> routing splits traffic by assigned proportions \u2014 the standard mechanism for canary releases and gradual migrations. Failover is active/passive. Multivalue returns up to eight healthy answers and is a poor substitute for a load balancer. Geolocation routes by user location."
  }
 ];
 

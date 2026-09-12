@@ -1,0 +1,275 @@
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 10 — Who Did It, And What It Cost</h1>
+    <div class="sub">A trail that records every API call this curriculum made, a recorder that judges resources against rules, and a budget that would have caught anything the teardowns missed.</div>
+    <div class="meta">
+      <div><b>3</b>governance services</div>
+      <div><b>2</b>Config rules</div>
+      <div><b>$5</b>budget ceiling</div>
+      <div><b>~$0.01</b>total</div>
+    </div>
+  </div>
+
+  <p>Nine labs have been created and destroyed in this account. This one turns on the services that
+  would have told you about it — and then reads back the record of everything the earlier labs did.
+  It is the only lab whose value comes from the history that already exists.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: CloudTrail versus Config and what each actually answers, log file validation, Config
+    rules and compliance, and budgets with actual versus forecasted alerts. Out of scope: Cost
+    Explorer (not enabled on this account), Organizations and consolidated billing, Savings Plans,
+    and Trusted Advisor.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Three services, three different questions</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>CloudTrail answers <em>who did this and when</em>, Config answers <em>what does this look
+      like now and is that allowed</em>, and a budget answers <em>is this going to cost more than I
+      agreed to</em> — they are constantly confused with each other, and the exam relies on that.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Record every management API call in every region</li>
+          <li>Prove the log has not been altered</li>
+          <li>Flag a public bucket or an open SSH port</li>
+          <li>Warn before spend exceeds a threshold</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Multi-region, or it misses calls made elsewhere</li>
+          <li>Config scoped to a few resource types, not all</li>
+          <li>Alerts on forecast, not only on actual</li>
+          <li>Alert address never committed to a public repo</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>Cost Explorer is not enabled on this account</li>
+          <li>Config bills per configuration item recorded</li>
+          <li>Log retention one day — this is a lab</li>
+          <li>Budget requires a confirmed email</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>CloudTrail trail</div>
+        <div class="role">Multi-region, global service events included, log file validation on. <b>Why:</b> a single-region trail silently misses everything done elsewhere. Validation writes digest files so tampering is detectable — the difference between a log and evidence.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Audit bucket</div>
+        <div class="role">One bucket serving both services, each under its own prefix, all public access blocked, objects expiring after a day. <b>Why:</b> both services need explicit bucket policy statements naming their service principals — neither can write without them, and that is the usual cause of a trail that silently records nothing.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>Config recorder</div>
+        <div class="role">Scoped to four resource types rather than everything. <b>Why:</b> Config bills <b>per configuration item recorded</b>. <code>AllSupported: true</code> in a busy account is a genuinely common and unexpected bill, and scoping is the lever.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Two managed rules</div>
+        <div class="role"><code>S3_BUCKET_PUBLIC_READ_PROHIBITED</code> and <code>INCOMING_SSH_DISABLED</code>. <b>Why:</b> AWS writes and maintains the evaluation logic. Custom rules run your own Lambda and cost more to build and operate — reach for managed rules first.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Monthly budget</div>
+        <div class="role">$5 ceiling with two notifications. <b>Why:</b> <b>ACTUAL at 50%</b> fires after the money is spent; <b>FORECASTED at 100%</b> fires before it is, based on projected trend. The forecast alert is the one that actually prevents a surprise.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#879196"></span>Parameter file</div>
+        <div class="role">The alert email lives in <code>infra/params.json</code>, which is gitignored. <b>Why:</b> this repository is public. A budget alert address is not a secret, but committing a personal email to a public repo is a habit worth not forming.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 420" role="img" aria-label="CloudTrail and AWS Config both writing to an audit bucket, Config evaluating rules for compliance, and a budget sending actual and forecasted alerts by email.">
+        <rect class="d-bg" x="0" y="0" width="760" height="420"/>
+
+        <rect class="region" x="8" y="16" width="744" height="388" rx="8"/>
+        <text class="zone-lbl" x="20" y="36" fill="#545B64">ACCOUNT-WIDE · THE TRAIL IS MULTI-REGION</text>
+
+        <rect class="zbox" x="26" y="56" width="196" height="120" rx="6"/>
+        <text class="zone-lbl" x="36" y="76" fill="#545B64">EVERY API CALL</text>
+        <text class="flow" x="36" y="98">CreateStack</text>
+        <text class="flow" x="36" y="112">RunInstances</text>
+        <text class="flow" x="36" y="126">DeleteStack</text>
+        <text class="flow" x="36" y="140">PutBucketPolicy</text>
+        <text class="flow" x="36" y="158">…from labs 01–09</text>
+
+        <rect class="tile-o" x="266" y="74" width="170" height="52" rx="4"/>
+        <text class="t-lbli" x="351" y="96">CloudTrail</text>
+        <text class="t-subd" x="351" y="111">who · when · from where</text>
+
+        <rect class="tile-p" x="266" y="214" width="170" height="52" rx="4"/>
+        <text class="t-lbl" x="351" y="236">AWS Config</text>
+        <text class="t-sub" x="351" y="251">what it looks like now</text>
+
+        <rect class="tile-b" x="516" y="140" width="200" height="56" rx="4"/>
+        <text class="t-lbl" x="616" y="163">Audit bucket</text>
+        <text class="t-sub" x="616" y="179">both write here, own prefixes</text>
+
+        <rect class="tile" x="516" y="238" width="200" height="56" rx="4"/>
+        <text class="t-lbl" x="616" y="261">Compliance</text>
+        <text class="t-sub" x="616" y="277">2 managed rules · pass or fail</text>
+
+        <rect class="tile-grn" x="266" y="320" width="170" height="52" rx="4"/>
+        <text class="t-lbl" x="351" y="342">Budget · $5</text>
+        <text class="t-sub" x="351" y="357">actual 50% · forecast 100%</text>
+
+        <rect class="tile-w" x="516" y="320" width="200" height="52" rx="5"/>
+        <text class="t-lbli" x="616" y="342">Email alert</text>
+        <text class="flow" x="616" y="357" text-anchor="middle">forecast fires before you spend</text>
+
+        <path class="ln-o" d="M222,112 H262" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M436,104 H480 V162 H512" marker-end="url(#arrow-o)"/>
+        <path class="ln" d="M436,232 H480 V180 H512" marker-end="url(#arrow)"/>
+        <path class="ln" d="M436,250 H480 V262 H512" marker-end="url(#arrow)"/>
+        <path class="ln-async" d="M436,346 H512" marker-end="url(#arrow-a)"/>
+
+        <text class="flow" x="26" y="214">CloudTrail is a ledger:</text>
+        <text class="flow" x="26" y="226">an append-only record of</text>
+        <text class="flow" x="26" y="238">actions, with validation</text>
+        <text class="flow" x="26" y="250">digests proving nobody</text>
+        <text class="flow" x="26" y="262">edited it.</text>
+
+        <text class="flow" x="26" y="296">Config is an inventory:</text>
+        <text class="flow" x="26" y="308">the current shape of each</text>
+        <text class="flow" x="26" y="320">resource, judged against</text>
+        <text class="flow" x="26" y="332">rules, with history.</text>
+
+        <text class="flow" x="26" y="366">Confusing the two is one</text>
+        <text class="flow" x="26" y="378">of the exam's reliable traps.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — Both services write to the same bucket and answer completely different questions. CloudTrail records the <em>action</em>; Config records the <em>state</em> that resulted. "Who opened this security group" is CloudTrail; "which security groups are open right now" is Config.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = role</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>Activity record</div>
+        <div class="it"><span class="chip" style="background:#8B5CF6"></span>State inventory</div>
+        <div class="it"><span class="chip" style="background:#1B9E77"></span>Spend control</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Storage / findings</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Notification</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Events recorded</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>State and evaluation</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Alert</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">Every management API call in the account — from the console, the CLI, or CloudFormation — is captured by CloudTrail, in every region because the trail is multi-region.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">Events are written to the audit bucket under <code>AWSLogs/</code>, and digest files are written alongside so any later alteration is detectable.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd"><b>Independently</b>, the last 90 days of events are queryable with <code>lookup-events</code> without reading the bucket at all — which is how you answer "who deleted that" in seconds.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">Config records a <b>configuration item</b> whenever one of the four watched resource types is created, changed or deleted — a point-in-time snapshot of that resource's settings.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">Each change triggers evaluation against the two rules. Results appear as <code>COMPLIANT</code> or <code>NON_COMPLIANT</code> per resource.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">Meanwhile the budget tracks spend. At 50% of $5 <b>actual</b>, an email is sent. Separately, if the month's <b>forecast</b> exceeds $5, an email is sent before the money is spent.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">The subscription must be confirmed from the inbox before any alert is delivered — an unconfirmed budget alert is silently useless.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">Which service answers "why is this bucket public?"</div>
+      <div class="row"><div class="opt no">CloudTrail alone</div><div class="rea">Tells you <em>who</em> called <code>PutBucketPolicy</code> and when — but you must already suspect the bucket, and you must search. It cannot tell you which buckets are public right now.</div></div>
+      <div class="row"><div class="opt no">Config alone</div><div class="rea">Tells you the bucket is non-compliant now, and shows its configuration history — but not which principal made the change or from which IP.</div></div>
+      <div class="row"><div class="opt yes">Both, and they are complementary</div><div class="rea">Chosen. Config finds it; CloudTrail explains it. The exam habitually offers one when the question needs the other — read for whether it asks about <em>state</em> or about <em>an action</em>.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">Which budget alert actually prevents overspend?</div>
+      <div class="row"><div class="opt no">ACTUAL at 100%</div><div class="rea">Fires when the budget is already fully spent. Useful as a record, useless as a warning.</div></div>
+      <div class="row"><div class="opt no">ACTUAL at 50% only</div><div class="rea">An earlier warning, but it says nothing about trajectory — 50% on the 2nd of the month is alarming, on the 28th it is fine.</div></div>
+      <div class="row"><div class="opt yes">FORECASTED at 100%, plus ACTUAL at 50%</div><div class="rea">Chosen. The forecast projects the month's trend and warns before the threshold is crossed, which is the only alert that gives time to act. The actual alert is the backstop for a sudden spike the forecast has not caught up with.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">The distinction in one line</span>
+      <strong>CloudTrail is a ledger of actions. Config is an inventory of states.</strong> Any
+      question containing "who", "when", "which user" or "from what IP" is CloudTrail. Any question
+      containing "which resources are", "is it compliant", "how was it configured last Tuesday" is
+      Config. Add <strong>CloudWatch</strong> as the third: it records <em>metrics and logs about
+      behaviour</em> — how busy, how slow, how many errors — which is a third question again.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">The audit bucket blocks all public access and is encrypted. Log file validation means tampering is detectable. In a real environment this bucket belongs in a <b>separate account</b> that the audited account cannot write over — an attacker's first move is deleting the trail.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">Both services are account-wide and managed. The scaling concern is cost, not capacity: Config's volume grows with how many resource types you record and how often they change.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">The characteristic failure is silence. A trail whose bucket policy is wrong records nothing and raises no error. A budget whose email was never confirmed sends nothing. <b>Both look configured and neither works</b> — which is why the console tour verifies delivery rather than trusting the resource exists.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">The first copy of management events is free; a second trail bills. <b>Data events</b> — every S3 object read, every Lambda invoke — are charged per event and are the usual cause of a shock CloudTrail bill. For Config, scope the recorder. Budgets are free for the first two.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>2–3 minutes.</b> Requires <code>infra/params.json</code> with your email — the template has no default, deliberately. Confirm the subscription from your inbox or no alert will ever arrive.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Query CloudTrail for the last 90 days and <b>read back the history of labs 01–09</b> — every <code>CreateStack</code>, every <code>DeleteStack</code>, every NAT gateway created and destroyed. This is the only lab that can show you the others.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Create a security group allowing <code>0.0.0.0/0</code> on port 22. Config marks it <code>NON_COMPLIANT</code> within minutes; CloudTrail shows who created it. Two services, two halves of the answer.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx"><b>3–4 minutes.</b> The recorder must stop before the delivery channel can go, and the bucket must be emptied. Consider keeping the budget — it is free and it protects every future lab.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>Your own history in <code>lookup-events</code>. Nine labs of evidence were being recorded by the default event history before this trail existed.</li>
+            <li>The delay before Config reports compliance. It is minutes, not seconds — Config is for governance, not for real-time prevention.</li>
+            <li>Whether the budget email actually arrives. An unconfirmed subscription is the most common reason a budget alert never fires.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never enable CloudTrail <b>data events</b> across all S3 buckets without thinking. Management
+          events are free and low-volume; data events log <b>every single object-level operation</b>,
+          and on a busy bucket that is millions of events a day at $0.10 per hundred thousand. It is
+          one of the fastest ways to turn a governance improvement into a five-figure surprise.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / hour</th><th style="text-align:right">This lab</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>CloudTrail management events</td><td class="n">0.0000</td><td class="n">0.0000</td><td>First copy is free</td></tr>
+        <tr><td>AWS Config configuration items</td><td class="n">—</td><td class="n">~0.0100</td><td>$0.003 each; scoped to 4 types</td></tr>
+        <tr><td>Config rule evaluations</td><td class="n">—</td><td class="n">~0.0010</td><td>$0.001 per evaluation</td></tr>
+        <tr><td>Budgets</td><td class="n">0.0000</td><td class="n">0.0000</td><td>First two are free</td></tr>
+        <tr><td>S3 storage (1-day retention)</td><td class="n">0.0000</td><td class="n">~0.0001</td><td>Kilobytes</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">~0.0000</td><td class="n">~0.0111</td><td>About one cent</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> Cost Explorer is not enabled on this account, which is
+    why every lab in this curriculum estimates cost from published rates instead of querying actual
+    spend — worth knowing that enabling it is free, takes 24 hours to populate, and that its API
+    calls cost $0.01 each. No Organizations or consolidated billing, which is where service control
+    policies and volume discounts live. No Savings Plans or Reserved Instances: both trade
+    commitment for discount, and both are answers to "predictable steady-state usage", never to
+    "unpredictable spiky load". No Trusted Advisor, whose full check set needs a Business support
+    plan.</p>
+
+    <div class="callout warn">
+      <span class="ct">The last word on cost, after ten labs</span>
+      The cheapest architecture in this curriculum was Lab 04 at <strong>exactly zero per hour
+      idle</strong>. The most expensive was Lab 03 at <strong>$0.078</strong>, most of which bought
+      a standby serving no traffic. The single largest avoidable line item anywhere was Lab 01's NAT
+      gateway — <strong>$43 a month to pass packets nobody was sending</strong>. Cost optimisation on
+      the exam is rarely about choosing a smaller instance. It is about noticing which components
+      charge by the hour whether or not anyone uses them, and removing the ones that do not need to.
+    </div>
+  </div>

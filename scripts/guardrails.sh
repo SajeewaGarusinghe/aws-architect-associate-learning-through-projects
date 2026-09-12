@@ -7,14 +7,18 @@ export AWS_DEFAULT_REGION="$AWS_REGION"
 ACCOUNT_ID="213104855858"
 
 # Resources that exist outside the labs. Nothing here may ever be modified or deleted.
-# i-02060040f8335f406 is the EC2 host running the Claude Code session itself; destroying
-# it would kill both the working environment and the operator's access to the account.
-PROTECTED_INSTANCES=("i-02060040f8335f406")
+#   i-0c1da89383976a124  the CURRENT session host (t3.small). Destroying it kills the
+#                        working environment and the operator's access to the account.
+#   i-02060040f8335f406  the previous host (c7i-flex.large), stopped, kept after an
+#                        AMI migration. Not a lab resource, so never a teardown target.
+# The account's free plan blocks in-place resize, so replacing the host means a new
+# instance id — re-check this list if the session host ever changes again.
+PROTECTED_INSTANCES=("i-0c1da89383976a124" "i-02060040f8335f406")
 PROTECTED_VPCS=("vpc-0f4d9a74d92ad4dfc" "vpc-0ac6952c1ea149bbb")
 PROTECTED_KEYPAIRS=("amaradhasa_key")
 
 TAG_PROJECT="saa-labs"
-BASELINE_INSTANCE_COUNT=1
+BASELINE_INSTANCE_COUNT=1   # running; a second, stopped host also exists
 BASELINE_VPC_COUNT=2
 
 die()  { printf '\033[1;31mERROR\033[0m %s\n' "$*" >&2; exit 1; }

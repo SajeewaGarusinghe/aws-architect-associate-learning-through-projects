@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 08",
+  "title": "Disaster Recovery Drill",
+  "intro": "Twelve scenario questions on RTO and RPO, DR strategies, Route 53 routing and backup mechanics. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 08 — Failover and recovery points. Reference notes: exam-notes.md",
+  "notes_title": "Lab 08 (DR patterns)",
+  "notes_intro": "Twelve SAA-C03-style questions on recovery objectives, DR strategies and DNS routing, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "A business states it can tolerate four hours of downtime but must not lose more than five minutes of data. Which pair of objectives does this describe?",
+      "options": [
+        "RTO 5 minutes, RPO 4 hours",
+        "RTO 4 hours, RPO 5 minutes",
+        "Both RTO and RPO are 4 hours",
+        "RTO 4 hours, with no RPO requirement"
+      ],
+      "answer": 1,
+      "why": "<strong>RTO is how long you are down</strong> — four hours here. <strong>RPO is how much data you may lose</strong> — five minutes. They are bought separately: a relaxed RTO permits a cheap strategy like pilot light, while a tight RPO demands continuous replication regardless."
+    },
+    {
+      "q": "A company replicates its database continuously to a second region but keeps all application servers switched off there. In a disaster they start the servers and redirect traffic. Which DR strategy is this?",
+      "options": [
+        "Backup and restore",
+        "Pilot light",
+        "Warm standby",
+        "Multi-site active/active"
+      ],
+      "answer": 1,
+      "why": "<strong>Pilot light</strong>: the core data is always replicated and ready, but compute is off until needed. Recovery takes tens of minutes to start and scale. <strong>Warm standby</strong> keeps a scaled-down copy actually running. <strong>Backup and restore</strong> has nothing replicated continuously."
+    },
+    {
+      "q": "A Route 53 failover record has a TTL of 3600 seconds. The health check detects failure in 60 seconds. What is the realistic worst-case recovery time for an already-connected client?",
+      "options": [
+        "About 60 seconds",
+        "Up to roughly 61 minutes, because cached answers persist for the TTL",
+        "Immediate, because Route 53 pushes updates to resolvers",
+        "About 30 minutes, half the TTL"
+      ],
+      "answer": 1,
+      "why": "Detection plus caching. Route 53 changes its answer after ~60 seconds, but resolvers that already answered keep serving the old value <strong>until their cached TTL expires</strong> — up to an hour. The TTL is a floor on recovery time you set in advance, which is why failover records use short TTLs."
+    },
+    {
+      "q": "Which Route 53 routing policy sends users to the region that gives them the lowest response time?",
+      "options": [
+        "Geolocation",
+        "Latency-based",
+        "Geoproximity",
+        "Weighted"
+      ],
+      "answer": 1,
+      "why": "<strong>Latency-based</strong> routing uses measured latency between the user and AWS regions. <strong>Geolocation</strong> routes by where the user is, which is about compliance and localisation rather than speed. <strong>Geoproximity</strong> routes by distance with an adjustable bias. <strong>Weighted</strong> splits by proportion, for canaries and migrations."
+    },
+    {
+      "q": "An engineer accidentally deletes rows from a DynamoDB table at 14:30. Point-in-time recovery is enabled. What can they do?",
+      "options": [
+        "Undo the deletion in place on the existing table",
+        "Restore to a new table as it existed at any second within the last 35 days",
+        "Restore only from the most recent daily snapshot",
+        "Nothing — PITR only protects against infrastructure failure"
+      ],
+      "answer": 1,
+      "why": "PITR restores <strong>to a new table</strong> — never in place — at any second within the trailing 35 days. Note that it protects against <em>application</em> errors as much as infrastructure failure; a bad deploy writing garbage is the common case. The restore target being a new table means cutover is a deliberate step."
+    },
+    {
+      "q": "Which statement about enabling S3 versioning and DynamoDB PITR is correct?",
+      "options": [
+        "Both can be enabled after an incident to recover prior data",
+        "Both must be enabled before the incident — they cannot recover data lost beforehand",
+        "Versioning is retroactive but PITR is not",
+        "Both are enabled by default on new resources"
+      ],
+      "answer": 1,
+      "why": "Neither is retroactive. Versioning starts preserving versions from the moment it is switched on; PITR starts its continuous backup window then too. <strong>Turning them on after the mistake recovers nothing</strong> — which is why recovery point is a decision made long before the disaster, and why neither being on by default is worth knowing."
+    },
+    {
+      "q": "A Route 53 health check monitors an endpoint that returns 200 from a load balancer even when the database behind it is failing. What is the consequence?",
+      "options": [
+        "Route 53 fails over as soon as user requests error",
+        "The health check keeps passing, failover never triggers, and the outage continues",
+        "The health check times out and triggers failover",
+        "CloudWatch automatically overrides the health check"
+      ],
+      "answer": 1,
+      "why": "A health check only knows what the checked path tells it. A shallow check on <code>/</code> that does not touch the failing dependency <strong>keeps passing while the application is broken</strong>, so failover never happens. The check must exercise the dependency you are actually worried about — the same lesson as ALB health checks in Lab 02."
+    },
+    {
+      "q": "Which DR strategy has the lowest RTO, and what is the trade-off?",
+      "options": [
+        "Backup and restore — lowest cost and lowest RTO",
+        "Multi-site active/active — near-zero RTO, at roughly double the running cost",
+        "Pilot light — near-zero RTO, at minimal cost",
+        "Warm standby — zero RTO with no additional cost"
+      ],
+      "answer": 1,
+      "why": "<strong>Multi-site active/active</strong> serves live traffic from both regions, so recovery is effectively immediate — and you pay for full capacity in both, plus the hardest engineering problem: keeping data consistent when both sides accept writes. RTO and cost trade against each other across all four strategies."
+    },
+    {
+      "q": "An application needs a relational database with cross-region disaster recovery, an RPO of about one second, and promotion of the secondary region in under a minute. What fits?",
+      "options": [
+        "RDS Multi-AZ",
+        "Aurora Global Database",
+        "RDS cross-region read replica",
+        "DynamoDB global tables"
+      ],
+      "answer": 1,
+      "why": "<strong>Aurora Global Database</strong> replicates cross-region with typically sub-second lag and promotes a secondary region in about a minute. RDS Multi-AZ is single-region and solves AZ failure only. A cross-region read replica works but has higher lag and slower manual promotion. DynamoDB global tables are excellent but not relational."
+    },
+    {
+      "q": "What is the purpose of an S3 delete marker in a versioned bucket?",
+      "options": [
+        "It permanently erases all versions of the object",
+        "It becomes the current version so the object appears deleted, while prior versions remain",
+        "It marks the object for lifecycle transition to Glacier",
+        "It prevents the object from being deleted"
+      ],
+      "answer": 1,
+      "why": "A delete on a versioned bucket inserts a <strong>delete marker</strong> as the new current version. The object appears gone, but every prior version still exists and still bills. Removing the marker restores the object — and this is also why a versioned bucket is not truly empty when teardown tries to delete it."
+    },
+    {
+      "q": "A company wants to centrally define and enforce backup schedules and retention across EC2, EBS, RDS, DynamoDB and EFS. Which service is designed for this?",
+      "options": [
+        "Amazon S3 lifecycle policies",
+        "AWS Backup",
+        "AWS Config",
+        "Amazon Data Lifecycle Manager"
+      ],
+      "answer": 1,
+      "why": "<strong>AWS Backup</strong> centralises backup plans, schedules, retention and cross-region copy across many services, with vaults and compliance reporting. Data Lifecycle Manager handles EBS snapshots only. Config reports on configuration compliance but takes no backups."
+    },
+    {
+      "q": "Which Route 53 routing policy would you use to send 10% of traffic to a new version of an application?",
+      "options": [
+        "Failover",
+        "Weighted",
+        "Multivalue answer",
+        "Geolocation"
+      ],
+      "answer": 1,
+      "why": "<strong>Weighted</strong> routing splits traffic by assigned proportions — the standard mechanism for canary releases and gradual migrations. Failover is active/passive. Multivalue returns up to eight healthy answers and is a poor substitute for a load balancer. Geolocation routes by user location."
+    }
+  ]
+}

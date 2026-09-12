@@ -1,0 +1,276 @@
+  <div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 08 — Failover and Recovery Points</h1>
+    <div class="sub">DNS that reroutes when a health check fails, and the two settings that decide how much data a disaster can take from you.</div>
+    <div class="meta">
+      <div><b>2</b>endpoints</div>
+      <div><b>60s</b>TTL</div>
+      <div><b>35d</b>point-in-time window</div>
+      <div><b>$0.0014</b>per hour</div>
+    </div>
+  </div>
+
+  <p>Disaster recovery is usually taught as four named strategies and a pair of acronyms. This lab
+  builds the two mechanisms underneath them: the thing that moves traffic when something dies, and
+  the thing that determines what you can get back afterwards. Everything else is a choice about how
+  much to spend on each.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: Route 53 failover routing and health checks, TTL as a recovery-time floor, S3
+    versioning, DynamoDB point-in-time recovery, and how RTO and RPO map onto the four DR
+    strategies. Out of scope: cross-region replication, AWS Backup, and Aurora Global Database.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> Moving traffic, and getting data back</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>Failover is a DNS answer changing, which means your recovery time can never be shorter than
+      the TTL clients already cached — and your recovery point is decided long before the disaster,
+      by whether versioning and point-in-time recovery were switched on.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Send traffic elsewhere when the primary fails</li>
+          <li>Return automatically when it recovers</li>
+          <li>Recover an object overwritten by mistake</li>
+          <li>Restore a table to a point before an error</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Failover requires no human action</li>
+          <li>Detection within roughly 60 seconds</li>
+          <li>Recovery point measured in seconds, not days</li>
+          <li>Every claim observable with <code>dig</code></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>No domain owned — query the zone's own nameservers</li>
+          <li>No EC2, no VPC, single region</li>
+          <li>Under $0.002/hour</li>
+          <li>Destroyed by a single <code>delete-stack</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Health check</div>
+        <div class="role">HTTP, every 30 seconds, unhealthy after 2 consecutive failures. <b>Why:</b> checkers in many AWS regions request the path independently, so a single network problem near one checker cannot trigger a false failover.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Hosted zone</div>
+        <div class="role">A public zone for a domain nobody owns. <b>Why:</b> it will never resolve through the public DNS hierarchy, but querying its assigned nameservers directly works — which is all that is needed to watch the answer change.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>PRIMARY record</div>
+        <div class="role">A failover record carrying the health check, answered while healthy. <b>Why:</b> only a <em>failover</em> record set uses a health check this way. Weighted and latency records use health checks to remove an endpoint from a pool, which is a different behaviour.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>SECONDARY record</div>
+        <div class="role">The same name, answered only when the primary is unhealthy, with no health check of its own. <b>Why:</b> there is nothing beyond it to fail over to — if the secondary is also down, Route 53 answers with it anyway.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>60-second TTL</div>
+        <div class="role">How long resolvers may cache the answer. <b>Why:</b> this is a <b>floor on recovery time</b>. A 24-hour TTL means some clients keep using a dead endpoint for a day no matter how fast Route 53 reacts.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#37475A"></span>Versioned bucket</div>
+        <div class="role">S3 versioning with noncurrent versions expiring after a day. <b>Why:</b> versioning turns an overwrite or a delete into a recoverable event. Without it, an overwritten object is simply gone — there is no undo.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>DynamoDB with PITR</div>
+        <div class="role">Point-in-time recovery enabled — a single boolean. <b>Why:</b> it gives continuous backups for 35 days, restoring to any second. It is the difference between a recovery point of seconds and one of "whenever the last snapshot happened to run".</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 440" role="img" aria-label="Route 53 failover routing answering with a primary endpoint while its health check passes and a secondary endpoint when it fails, alongside S3 versioning and DynamoDB point-in-time recovery.">
+        <rect class="d-bg" x="0" y="0" width="760" height="440"/>
+
+        <rect class="tile-w" x="24" y="120" width="120" height="48" rx="5"/>
+        <text class="t-lbli" x="84" y="141">Resolver</text>
+        <text class="flow" x="84" y="156" text-anchor="middle">caches for TTL</text>
+
+        <rect class="region" x="8" y="16" width="744" height="408" rx="8"/>
+        <text class="zone-lbl" x="20" y="36" fill="#545B64">ROUTE 53 IS GLOBAL · S3 AND DYNAMODB ARE REGIONAL</text>
+
+        <rect class="tile-b" x="192" y="108" width="168" height="72" rx="4"/>
+        <text class="t-lbl" x="276" y="132">Hosted zone</text>
+        <text class="t-sub" x="276" y="148">www · A · TTL 60</text>
+        <text class="t-sub" x="276" y="163">two failover records</text>
+
+        <rect class="tile-grn" x="440" y="72" width="200" height="46" rx="4"/>
+        <text class="t-lbl" x="540" y="92">PRIMARY</text>
+        <text class="t-sub" x="540" y="107">203.0.113.10 · health-checked</text>
+
+        <rect class="tile-g" x="440" y="164" width="200" height="46" rx="4"/>
+        <text class="t-lbl" x="540" y="184">SECONDARY</text>
+        <text class="t-sub" x="540" y="199">198.51.100.20 · no check</text>
+
+        <rect class="tile-o" x="192" y="230" width="168" height="44" rx="4"/>
+        <text class="t-lbli" x="276" y="250">Health check</text>
+        <text class="t-subd" x="276" y="264">every 30s · fail after 2</text>
+
+        <rect class="zbox" x="24" y="312" width="712" height="96" rx="6"/>
+        <text class="zone-lbl" x="36" y="332" fill="#545B64">RECOVERY POINT — DECIDED BEFORE THE DISASTER, NOT AFTER</text>
+
+        <rect class="tile" x="44" y="344" width="212" height="48" rx="4"/>
+        <text class="t-lbl" x="150" y="364">S3 versioning</text>
+        <text class="t-sub" x="150" y="379">overwrite and delete are undoable</text>
+
+        <rect class="tile" x="288" y="344" width="212" height="48" rx="4"/>
+        <text class="t-lbl" x="394" y="364">DynamoDB PITR</text>
+        <text class="t-sub" x="394" y="379">any second, last 35 days</text>
+
+        <text class="flow" x="524" y="362">Neither can be enabled</text>
+        <text class="flow" x="524" y="374">retroactively. Switching</text>
+        <text class="flow" x="524" y="386">them on after the mistake</text>
+        <text class="flow" x="524" y="398">recovers nothing.</text>
+
+        <path class="ln-o" d="M144,144 H188" marker-end="url(#arrow-o)"/>
+        <path class="ln-o" d="M360,130 H400 V95 H436" marker-end="url(#arrow-o)"/>
+        <path class="ln" d="M360,158 H400 V187 H436" marker-end="url(#arrow)"/>
+        <text class="flow" x="366" y="88">while healthy</text>
+        <text class="flow" x="366" y="216">only when unhealthy</text>
+
+        <path class="ln-async" d="M276,226 V186" marker-end="url(#arrow-a)"/>
+        <path class="ln-async" d="M360,252 H540 V122" marker-end="url(#arrow-a)"/>
+        <text class="flow" x="366" y="292">the check drives which record answers</text>
+
+        <text class="flow" x="24" y="196">A cached answer keeps</text>
+        <text class="flow" x="24" y="208">the old endpoint until</text>
+        <text class="flow" x="24" y="220">the TTL expires — your</text>
+        <text class="flow" x="24" y="232">RTO floor.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — The top half is recovery time: a health check decides which record answers, and the TTL decides how long anyone keeps believing the old answer. The bottom half is recovery point, and it is entirely a matter of settings enabled in advance.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = state</div>
+        <div class="it"><span class="chip" style="background:#1B9E77"></span>Serving now</div>
+        <div class="it"><span class="chip" style="background:#545B64"></span>Standing by</div>
+        <div class="it"><span class="chip" style="background:#FF9900"></span>The thing that decides</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>DNS</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Data protection</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Answer while healthy</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Answer after failure</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Health signal</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">Route 53 health checkers in several regions request the configured path every 30 seconds. A check is considered failed only when enough checkers agree, which is what prevents one bad network path causing a false failover.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">A resolver queries the record name. While the health check passes, Route 53 answers with the <b>PRIMARY</b> value and the resolver caches it for 60 seconds.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd">The endpoint starts failing. After <b>two consecutive failed checks — roughly 60 seconds</b> — Route 53 marks the health check unhealthy.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">New queries now receive the <b>SECONDARY</b> value. No record was edited and nobody was paged; the record set simply stopped being eligible to answer.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd"><b>Clients that already resolved keep using the old answer until their cached TTL expires.</b> Total observed recovery time is detection plus TTL — which is why the TTL is a floor you set in advance.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">When the endpoint recovers, two consecutive passes mark it healthy and the primary answers again. Failback is automatic, and just as subject to caching.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd"><b>Separately:</b> every write to the versioned bucket keeps the previous version, and DynamoDB continuously captures changes so the table can be restored to any second in the last 35 days.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">Which DR strategy does the budget justify?</div>
+      <div class="row"><div class="opt no">Backup and restore</div><div class="rea">Cheapest by far — backups only, nothing running. Recovery takes hours to days because the environment must be built before data is restored. Correct for workloads that can genuinely be down that long.</div></div>
+      <div class="row"><div class="opt no">Pilot light</div><div class="rea">Core data replicated continuously, servers switched off. Recovery in tens of minutes. Cheap, because you pay for storage but not compute.</div></div>
+      <div class="row"><div class="opt yes">Warm standby</div><div class="rea">A scaled-down but <em>running</em> copy, ready to take traffic and scale up. Recovery in minutes. This lab's failover records assume something is already running to fail over to.</div></div>
+      <div class="row"><div class="opt no">Multi-site active/active</div><div class="rea">Both regions serve live traffic; recovery is effectively immediate. Roughly double the cost, and the hardest to build because data must be consistent in both directions.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">What TTL should a failover record carry?</div>
+      <div class="row"><div class="opt no">300 seconds or more</div><div class="rea">Fewer DNS queries and marginally lower Route 53 cost, but it adds up to five minutes to every recovery — during which a share of users are still being sent to the dead endpoint.</div></div>
+      <div class="row"><div class="opt yes">60 seconds</div><div class="rea">Chosen. The extra query volume is negligible, and it keeps the caching component of recovery time roughly equal to the detection component instead of dominating it. Lower than 60 buys little, because detection is the other half.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">RTO and RPO, distinguished</span>
+      <strong>RTO</strong> is how long you are down: detection plus TTL plus whatever must be started.
+      <strong>RPO</strong> is how much data you lose: the gap between the disaster and your last
+      recoverable state. They are bought separately. Failover routing buys RTO and does nothing for
+      RPO; versioning and point-in-time recovery buy RPO and do nothing for RTO. A question naming
+      hours of acceptable downtime but zero data loss is describing a cheap RTO with an expensive RPO.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">The bucket blocks all public access and is encrypted; versioning means deletion writes a marker rather than destroying data. PITR protects the table against application bugs as much as against infrastructure failure — the common case is a bad deploy writing garbage, not a region disappearing.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">Route 53 is a global anycast service with a 100% availability SLA — the only AWS service that carries one. Nothing here needs capacity planning.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">The dangerous ones are configuration, not outage: a TTL long enough to dominate recovery, a health check pointed at a path that stays up while the application is broken, and <b>a secondary nobody ever tested</b>. Failover to a standby that does not work is the most expensive failure in this lab's subject area.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">Hosted zone $0.50/month, health check $0.50/month, queries about $0.40 per million. Versioning costs whatever the old versions occupy, which is why the lifecycle rule expires them. PITR adds roughly 20% to table storage cost.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~15 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Under two minutes</b>, but the health check needs <b>a further 60–90 seconds</b> before it reports healthy. Querying immediately after deploy may return the secondary — that is the check still initialising, not a failure.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx"><code>dig</code> the record against the zone's own nameservers and get the primary address. Check the health check's status across its individual checker regions.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Point the health check at a path that 404s. Within about 60 seconds the same query returns the <b>secondary</b> address — with no record edited. Restore the path and watch it fail back.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">Around two minutes. <b>The bucket must be emptied including every version</b>, and a versioned bucket is not empty just because the objects look deleted — delete markers are versions too.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>The delay between breaking the check and the answer changing. That is your detection time, and adding the TTL gives the real recovery time.</li>
+            <li>The health check's per-region observations. Some regions report failure before others — this is the consensus mechanism working.</li>
+            <li>That no record was modified during failover. Both records exist the whole time; only eligibility changed.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never point a health check at a path that cannot fail with the application. A check on
+          <code>/</code> served by a load balancer will keep passing while every database call behind
+          it errors, so <b>Route 53 never fails over and the outage simply continues</b>. The health
+          check must exercise the dependency you are actually worried about — and the same logic
+          applies to the load balancer health checks in Lab 02.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">$ / month</th><th style="text-align:right">$ / hour</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>Hosted zone</td><td class="n">0.5000</td><td class="n">0.0007</td><td>Per zone, first 25</td></tr>
+        <tr><td>Health check</td><td class="n">0.5000</td><td class="n">0.0007</td><td>AWS endpoints; non-AWS costs more</td></tr>
+        <tr><td>DNS queries</td><td class="n">~0.0000</td><td class="n">0.0000</td><td>$0.40 per million</td></tr>
+        <tr><td>S3 + DynamoDB (near-empty)</td><td class="n">~0.0000</td><td class="n">0.0000</td><td>PITR adds ~20% of table storage</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">1.0000</td><td class="n">0.0014</td><td>Under two cents for the lab</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Deliberately absent.</strong> No second region — cross-region replication and a real
+    standby would multiply both cost and build time to demonstrate a mechanism the single-region
+    failover already shows. No AWS Backup, which centralises backup policy across services and is
+    the right answer when a question mentions governing backups centrally. No Aurora Global
+    Database, whose sub-second cross-region replication and roughly one-minute promotion is the
+    answer when a question demands both very low RPO and cross-region protection.</p>
+
+    <div class="callout warn">
+      <span class="ct">Routing policies, in one line each</span>
+      <strong>Simple</strong> — one answer, no logic. <strong>Failover</strong> — active/passive, the
+      one this lab builds. <strong>Weighted</strong> — split by proportion, for canaries and
+      migrations. <strong>Latency</strong> — the region with the lowest latency for that user.
+      <strong>Geolocation</strong> — by where the user is, for compliance and localisation.
+      <strong>Geoproximity</strong> — by distance with an adjustable bias. <strong>Multivalue</strong>
+      — up to eight healthy answers, a poor substitute for a load balancer. Matching the policy to
+      the stated intent is a reliable source of exam marks.
+    </div>
+  </div>

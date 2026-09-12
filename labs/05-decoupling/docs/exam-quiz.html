@@ -1,4 +1,4 @@
-<title>VPC Exam Drill</title>
+<title>Decoupling Exam Drill</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -102,9 +102,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">SAA-C03 · Lab 01</div>
-    <h1>VPC Exam Drill</h1>
-    <p>Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.</p>
+    <div class="eyebrow">SAA-C03 · Lab 05</div>
+    <h1>Decoupling Exam Drill</h1>
+    <p>Twelve scenario questions on SQS, SNS, dead-letter queues and asynchronous design. Answer cold — the explanation appears after each choice.</p>
     <div class="bar">
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="tally" id="tally"><b>0</b>/12 correct</div>
@@ -113,142 +113,142 @@
 
   <div id="stage"></div>
 
-  <footer>Drawn from Lab 01 — VPC from scratch. Reference notes: exam-notes.md</footer>
+  <footer>Drawn from Lab 05 — Decoupling with queues. Reference notes: exam-notes.md</footer>
 </div>
 
 <script>
 const Q = [
  {
-  "q": "An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+  "q": "An order service must notify three separate downstream systems whenever an order is placed. Each system must receive every order and process it independently at its own pace. What is the appropriate design?",
   "options": [
-   "The instance needs an Elastic IP instead of an auto-assigned public IP",
-   "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
-   "The instance needs a NAT gateway to reach the internet",
-   "DNS hostnames are disabled on the VPC"
+   "One SQS queue that all three systems poll",
+   "An SNS topic with three subscribed SQS queues, one per system",
+   "Three Lambda functions invoked directly by the order service",
+   "An SNS topic with all three systems subscribed by HTTP endpoint"
   ],
   "answer": 1,
-  "why": "A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> \u2014 that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."
+  "why": "A standard SQS queue delivers each message to <strong>one</strong> consumer \u2014 three systems polling one queue would <em>split</em> the orders, not each receive a copy. SNS fan-out to one queue per subscriber gives each system its own buffer, retries and dead-letter behaviour. HTTP subscribers would receive the message but get no queue, so an outage loses it."
  },
  {
-  "q": "Instances in a private subnet cannot complete outbound HTTPS requests \u2014 connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+  "q": "A Lambda function consuming from SQS has a 60-second timeout. The queue's visibility timeout is 30 seconds. What is the likely consequence?",
   "options": [
-   "Add an inbound rule for TCP 443 to the security group",
-   "Add an inbound network ACL rule allowing TCP 1024\u201365535 from <code>0.0.0.0/0</code>",
-   "Add an outbound rule for ephemeral ports to the security group",
-   "Replace the custom network ACL with the default network ACL"
+   "Messages are deleted before processing completes",
+   "The same message is delivered to a second invocation while the first is still running",
+   "The function is throttled to match the visibility timeout",
+   "Messages go straight to the dead-letter queue"
   ],
   "answer": 1,
-  "why": "Network ACLs are <strong>stateless</strong> \u2014 each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024\u201365535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."
+  "why": "The message becomes visible again after 30 seconds \u2014 <strong>while the first invocation is still working</strong> \u2014 so a second consumer picks it up and the work happens twice, with no error anywhere to reveal it. The rule is <strong>visibility timeout \u2265 function timeout</strong>, conventionally six times it."
  },
  {
-  "q": "Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+  "q": "A message in an SQS queue cannot be processed successfully \u2014 it fails every time. Without a dead-letter queue configured, what happens?",
   "options": [
-   "Create an interface endpoint for S3",
-   "Create a gateway endpoint for S3",
-   "Move the instances to a public subnet",
-   "Add a second NAT gateway to spread the load"
+   "SQS deletes it after three attempts",
+   "It is retried until the message retention period expires, up to 14 days",
+   "It blocks the queue permanently and no other message is processed",
+   "It is moved to a hidden quarantine queue automatically"
   ],
   "answer": 1,
-  "why": "Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."
+  "why": "Without a redrive policy the message keeps returning to the queue until <strong>message retention</strong> expires \u2014 default 4 days, maximum 14. It consumes invocations and fills logs the whole time. With a small batch size it can also delay messages behind it, though it does not block the queue permanently."
  },
  {
-  "q": "A security policy forbids any internet path from a private subnet \u2014 no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+  "q": "An SNS topic has two SQS subscribers. One should receive only messages where a `priority` attribute equals `high`. What is the most efficient way to achieve this?",
   "options": [
-   "<code>ssm</code> only",
-   "<code>ssm</code> and <code>ec2</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"
-  ],
-  "answer": 2,
-  "why": "All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."
- },
- {
-  "q": "One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
-  "options": [
-   "They continue normally; NAT gateways are regional",
-   "They lose outbound internet connectivity",
-   "They automatically fail over to an internet gateway",
-   "They lose all connectivity, including to other subnets in the VPC"
+   "Filter inside the consumer and discard unwanted messages",
+   "Apply a filter policy to that subscription",
+   "Create a second topic and publish to both",
+   "Use a FIFO topic with message group IDs"
   ],
   "answer": 1,
-  "why": "A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it \u2014 and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."
+  "why": "A <strong>filter policy</strong> is evaluated at SNS, so non-matching messages are never delivered to that queue and the consumer is never invoked for them \u2014 cheaper and simpler than filtering in code. Filtering in the consumer means paying to receive and discard. A second topic makes the publisher aware of the routing again."
  },
  {
-  "q": "How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+  "q": "What delivery guarantee does a standard SQS queue provide?",
   "options": [
-   "256",
-   "254",
-   "251",
-   "250"
-  ],
-  "answer": 2,
-  "why": "A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 \u2014 the on-premises networking answer."
- },
- {
-  "q": "Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
-  "options": [
-   "It succeeds; the more specific route wins",
-   "It succeeds, but only one direction works",
-   "It fails \u2014 peered VPCs cannot have overlapping CIDR blocks",
-   "It succeeds if a transit gateway is used instead"
-  ],
-  "answer": 2,
-  "why": "Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build \u2014 it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."
- },
- {
-  "q": "Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
-  "options": [
-   "A NAT gateway",
-   "An egress-only internet gateway",
-   "An internet gateway with a restrictive network ACL",
-   "A NAT instance with source/destination checking disabled"
+   "Exactly once, in the order sent",
+   "At least once, with best-effort ordering",
+   "At most once, with guaranteed ordering",
+   "Exactly once, with no ordering guarantee"
   ],
   "answer": 1,
-  "why": "An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."
+  "why": "Standard queues guarantee <strong>at least once</strong> delivery with best-effort ordering \u2014 a message can be delivered more than once and out of order. Consumers must therefore be <strong>idempotent</strong>. FIFO queues provide exactly-once processing and strict ordering, at much lower throughput."
  },
  {
-  "q": "A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+  "q": "An application must process financial transactions in the exact order submitted, with no duplicates. Which service configuration is appropriate?",
   "options": [
-   "Rejected inbound SSH attempts",
-   "Traffic between two instances in different subnets of the same VPC",
-   "Requests to the instance metadata service at <code>169.254.169.254</code>",
-   "Outbound HTTPS traffic to the internet through a NAT gateway"
-  ],
-  "answer": 2,
-  "why": "Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic \u2014 the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."
- },
- {
-  "q": "A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
-  "options": [
-   "A security group inbound deny rule",
-   "A network ACL inbound deny rule",
-   "A security group with the IP removed from the allow list",
-   "An egress-only internet gateway"
+   "A standard SQS queue with a Lambda consumer",
+   "An SQS FIFO queue with message group IDs",
+   "An SNS standard topic with an SQS subscriber",
+   "A standard queue with a 0-second visibility timeout"
   ],
   "answer": 1,
-  "why": "Security groups support <strong>allow rules only</strong> \u2014 there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."
+  "why": "<strong>FIFO queues</strong> give strict ordering within a message group and exactly-once processing inside a 5-minute deduplication window. The cost is throughput \u2014 300 messages/second, or 3,000 with batching, versus effectively unlimited for standard. Order is preserved <em>per message group</em>, so the group ID choice determines how much parallelism remains."
  },
  {
-  "q": "A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+  "q": "A Lambda function consuming SQS catches all exceptions and returns normally, logging failures. Messages that fail are never retried and never reach the dead-letter queue. Why?",
   "options": [
-   "A NAT gateway",
-   "A NAT instance",
-   "An egress-only internet gateway",
-   "An internet gateway"
+   "The DLQ redrive policy is misconfigured",
+   "Returning without raising tells Lambda the batch succeeded, so the messages are deleted",
+   "Lambda only retries on timeout, not on exceptions",
+   "The visibility timeout is too short"
   ],
   "answer": 1,
-  "why": "A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither \u2014 only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."
+  "why": "Lambda's managed poller deletes messages when the handler <strong>returns without raising</strong>. Swallowing the exception is therefore indistinguishable from success: the data is silently discarded, the queue looks healthy, and the DLQ stays empty. Failure must propagate as a raised exception \u2014 or be reported via batch item failures for partial batches."
  },
  {
-  "q": "A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+  "q": "A queue receives a large burst of messages, and the Lambda consumer scales up to hundreds of concurrent executions, overwhelming a downstream database. What is the appropriate control?",
   "options": [
-   "NAT gateways bill per connection, and idle connections still count",
-   "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
-   "The Elastic IP is billed at a premium when attached to a NAT gateway",
-   "NAT gateways bill a minimum of 1 TB of data processing per month"
+   "Reduce the queue's message retention period",
+   "Set reserved concurrency on the consuming function",
+   "Increase the visibility timeout",
+   "Switch the queue to FIFO"
   ],
   "answer": 1,
-  "why": "A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> \u2014 about <strong>$43/month idle</strong> \u2014 plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."
+  "why": "<strong>Reserved concurrency</strong> caps how many instances of the function may run at once, so the queue absorbs the burst while the database sees a bounded rate \u2014 which is exactly the buffering a queue exists to provide. Retention and visibility timeout do not limit concurrency. FIFO would serialise things but for the wrong reason and at a heavy throughput cost."
+ },
+ {
+  "q": "What is the main cost benefit of long polling on an SQS queue?",
+  "options": [
+   "It reduces the per-message storage charge",
+   "It reduces the number of empty ReceiveMessage responses, which are billable requests",
+   "It compresses messages in transit",
+   "It allows a larger batch size"
+  ],
+  "answer": 1,
+  "why": "Short polling returns immediately even when the queue is empty, and <strong>every empty receive is a billable request</strong>. Long polling \u2014 <code>ReceiveMessageWaitTimeSeconds</code> up to 20 \u2014 waits for a message to arrive, cutting empty receives dramatically. It also reduces latency, since the message is returned the moment it lands."
+ },
+ {
+  "q": "An SNS topic delivers to an HTTP endpoint that is down for an hour. What happens to messages published during that window, with no dead-letter queue configured on the subscription?",
+  "options": [
+   "They are queued in SNS and delivered when the endpoint recovers",
+   "They are retried according to the delivery policy and then discarded",
+   "They are stored for 14 days like SQS messages",
+   "Publishing fails and the publisher receives an error"
+  ],
+  "answer": 1,
+  "why": "<strong>SNS is push-based and does not store messages indefinitely.</strong> It retries per the delivery policy and then drops them unless the subscription has a dead-letter queue. This is precisely why the SNS-to-SQS pattern exists: the queue provides the durable buffer that a raw HTTP subscription does not."
+ },
+ {
+  "q": "What does a redrive policy with `maxReceiveCount` set to 3 actually count?",
+  "options": [
+   "The number of seconds a message may remain invisible",
+   "The number of times a message has been received before being moved to the DLQ",
+   "The number of consumers permitted to read the queue",
+   "The number of retries per second allowed"
+  ],
+  "answer": 1,
+  "why": "It counts <strong>receives</strong>, tracked as <code>ApproximateReceiveCount</code> on each message. When a message has been received more than <code>maxReceiveCount</code> times without being deleted, SQS moves it to the dead-letter queue instead of making it visible again. The interval between attempts is the visibility timeout, not a backoff setting."
+ },
+ {
+  "q": "A workload needs to route events to different targets based on the content of the event, with rules that change frequently and may match on many fields. Which service fits best?",
+  "options": [
+   "SNS with filter policies",
+   "Amazon EventBridge",
+   "SQS with multiple queues",
+   "Step Functions"
+  ],
+  "answer": 1,
+  "why": "<strong>EventBridge</strong> is the event bus built for content-based routing: rich rule patterns over the event body, many target types, schema registry, and third-party SaaS sources. SNS filter policies work on message <em>attributes</em> and suit simpler cases. Step Functions orchestrate multi-step workflows rather than route events."
  }
 ];
 

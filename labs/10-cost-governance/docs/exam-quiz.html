@@ -1,4 +1,4 @@
-<title>VPC Exam Drill</title>
+<title>Governance And Cost Drill</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -102,9 +102,9 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">SAA-C03 · Lab 01</div>
-    <h1>VPC Exam Drill</h1>
-    <p>Twelve scenario questions on subnets, routing, NAT, endpoints and the stateful/stateless pair. Answer cold — the explanation appears after each choice.</p>
+    <div class="eyebrow">SAA-C03 · Lab 10</div>
+    <h1>Governance And Cost Drill</h1>
+    <p>Twelve scenario questions on CloudTrail, Config, CloudWatch, budgets and pricing models. Answer cold — the explanation appears after each choice.</p>
     <div class="bar">
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="tally" id="tally"><b>0</b>/12 correct</div>
@@ -113,142 +113,142 @@
 
   <div id="stage"></div>
 
-  <footer>Drawn from Lab 01 — VPC from scratch. Reference notes: exam-notes.md</footer>
+  <footer>Drawn from Lab 10 — Who did it, and what it cost. Reference notes: exam-notes.md</footer>
 </div>
 
 <script>
 const Q = [
  {
-  "q": "An EC2 instance launches into a subnet with an auto-assigned public IPv4 address. Its security group allows all outbound traffic and the subnet uses the default network ACL. The instance still cannot reach the internet. What is the most likely cause?",
+  "q": "A security team needs to know which IAM user deleted a production S3 bucket last Tuesday, and from what IP address. Which service answers this?",
   "options": [
-   "The instance needs an Elastic IP instead of an auto-assigned public IP",
-   "The subnet's route table has no <code>0.0.0.0/0</code> route to an internet gateway",
-   "The instance needs a NAT gateway to reach the internet",
-   "DNS hostnames are disabled on the VPC"
+   "AWS Config",
+   "AWS CloudTrail",
+   "Amazon CloudWatch",
+   "AWS Trusted Advisor"
   ],
   "answer": 1,
-  "why": "A public IP does nothing on its own. A subnet is <strong>public only because its route table sends <code>0.0.0.0/0</code> to an internet gateway</strong> \u2014 that route is the entire definition. An Elastic IP changes nothing when a public IP is already assigned, a NAT gateway serves instances <em>without</em> public IPs, and DNS hostnames affect name resolution rather than reachability."
+  "why": "<strong>CloudTrail is a ledger of API calls</strong> \u2014 who, when, from where, and what parameters. Config records resource <em>state</em> and would show the bucket vanished, but not who did it. CloudWatch records metrics and logs about behaviour. Any question with \"who\", \"when\" or \"which user\" is CloudTrail."
  },
  {
-  "q": "Instances in a private subnet cannot complete outbound HTTPS requests \u2014 connections hang and time out. The security group allows TCP 443 outbound. A custom network ACL allows TCP 443 outbound, and inbound allows all traffic from <code>10.0.0.0/16</code> only. What fixes it?",
+  "q": "A compliance team needs a continuously updated list of which security groups currently allow unrestricted inbound SSH. Which service is designed for this?",
   "options": [
-   "Add an inbound rule for TCP 443 to the security group",
-   "Add an inbound network ACL rule allowing TCP 1024\u201365535 from <code>0.0.0.0/0</code>",
-   "Add an outbound rule for ephemeral ports to the security group",
-   "Replace the custom network ACL with the default network ACL"
+   "CloudTrail with an event filter",
+   "AWS Config with a managed rule",
+   "CloudWatch Logs Insights",
+   "Amazon Inspector"
   ],
   "answer": 1,
-  "why": "Network ACLs are <strong>stateless</strong> \u2014 each packet is evaluated in each direction independently. The reply to an outbound HTTPS request arrives as a new inbound packet on an ephemeral port (1024\u201365535) and needs its own rule. The security group needs nothing because it is <strong>stateful</strong>. Replacing the ACL would work but discards the intended subnet controls."
+  "why": "<strong>Config evaluates current resource state against rules</strong> and reports compliant or non-compliant, with configuration history. The managed rule here is <code>INCOMING_SSH_DISABLED</code>. CloudTrail would show the API call that opened the port, but cannot list what is open right now."
  },
  {
-  "q": "Private instances download several terabytes per month from Amazon S3, currently routed through a NAT gateway. Which change reduces cost the most?",
+  "q": "A CloudTrail trail is created in ap-southeast-2 only. An engineer makes changes in us-east-1. What happens?",
   "options": [
-   "Create an interface endpoint for S3",
-   "Create a gateway endpoint for S3",
-   "Move the instances to a public subnet",
-   "Add a second NAT gateway to spread the load"
+   "The changes are recorded, because CloudTrail is always global",
+   "The changes are not recorded by that trail unless it is multi-region",
+   "The changes are recorded but only for 90 days",
+   "CloudTrail automatically creates a trail in the new region"
   ],
   "answer": 1,
-  "why": "Gateway endpoints for S3 and DynamoDB are <strong>free</strong>, and remove both the NAT hourly cost and the $0.0059/GB data processing charge for that traffic. An interface endpoint also bypasses NAT but bills hourly <em>and</em> per GB. Moving to a public subnet breaks the security posture; a second NAT increases cost."
+  "why": "A single-region trail records only that region's events, so activity elsewhere is invisible to it. <strong>Always create multi-region trails</strong>, and enable global service events. Note that the console's 90-day Event History exists in every region regardless, which sometimes masks the gap until an audit."
  },
  {
-  "q": "A security policy forbids any internet path from a private subnet \u2014 no NAT gateway, no internet gateway route. Administrators must still get an interactive shell via Session Manager. Which VPC interface endpoints are required?",
+  "q": "A company enables CloudTrail data events for all S3 buckets and receives an unexpectedly large bill. Why?",
   "options": [
-   "<code>ssm</code> only",
-   "<code>ssm</code> and <code>ec2</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>ec2messages</code>",
-   "<code>ssm</code>, <code>ssmmessages</code> and <code>s3</code>"
-  ],
-  "answer": 2,
-  "why": "All three are needed: <code>ssm</code> for the service API, <code>ssmmessages</code> for the Session Manager data channel, and <code>ec2messages</code> for the agent's command channel. Miss any one and the instance never shows as managed. An S3 gateway endpoint is needed only if you want session logs written to S3."
- },
- {
-  "q": "One NAT gateway sits in the public subnet of AZ-a. Private subnets in both AZ-a and AZ-b share a single route table pointing at it. AZ-a suffers a full outage. What happens to instances in AZ-b's private subnet?",
-  "options": [
-   "They continue normally; NAT gateways are regional",
-   "They lose outbound internet connectivity",
-   "They automatically fail over to an internet gateway",
-   "They lose all connectivity, including to other subnets in the VPC"
+   "Management events are charged per event",
+   "Data events log every object-level operation, which on busy buckets is millions of events",
+   "Multi-region trails cost double",
+   "Log file validation adds a per-event charge"
   ],
   "answer": 1,
-  "why": "A NAT gateway is <strong>zonal</strong>, not regional. A single NAT is a single point of failure for every private subnet routed through it \u2014 and in normal operation AZ-b's traffic also pays a cross-AZ transfer charge. The resilient pattern is one NAT per AZ with a route table per AZ. Intra-VPC traffic keeps working via the <code>local</code> route."
+  "why": "The first copy of <strong>management events</strong> is free. <strong>Data events</strong> \u2014 every GetObject, PutObject, Lambda invoke \u2014 are charged per event and are the standard cause of a shocking CloudTrail bill. Enable them selectively, on the buckets that actually need object-level auditing."
  },
  {
-  "q": "How many usable IP addresses does a <code>10.20.11.0/24</code> subnet provide for EC2 instances?",
+  "q": "Which budget notification type warns you before the money is spent?",
   "options": [
-   "256",
-   "254",
-   "251",
-   "250"
-  ],
-  "answer": 2,
-  "why": "A <code>/24</code> holds 256 addresses and AWS reserves <strong>five</strong> in every subnet: network (<code>.0</code>), VPC router (<code>.1</code>), DNS (<code>.2</code>), reserved for future use (<code>.3</code>), and broadcast (<code>.255</code>). That leaves <strong>251</strong>. The tempting wrong answer is 254 \u2014 the on-premises networking answer."
- },
- {
-  "q": "Two VPCs must exchange traffic. VPC-A uses <code>10.0.0.0/16</code> and VPC-B uses <code>10.0.0.0/24</code>. What is the outcome of creating a VPC peering connection?",
-  "options": [
-   "It succeeds; the more specific route wins",
-   "It succeeds, but only one direction works",
-   "It fails \u2014 peered VPCs cannot have overlapping CIDR blocks",
-   "It succeeds if a transit gateway is used instead"
-  ],
-  "answer": 2,
-  "why": "Peered VPCs cannot have overlapping or matching CIDR blocks; the request fails outright. A transit gateway does not solve it either. This is why CIDR planning matters <em>before</em> you build \u2014 it cannot be changed later without a rebuild, and it is exactly why this lab chose <code>10.20.0.0/16</code>."
- },
- {
-  "q": "Instances with only IPv6 addresses in a private subnet need to download OS updates from the internet, but nothing on the internet may initiate a connection to them. What provides this?",
-  "options": [
-   "A NAT gateway",
-   "An egress-only internet gateway",
-   "An internet gateway with a restrictive network ACL",
-   "A NAT instance with source/destination checking disabled"
+   "ACTUAL at 100%",
+   "FORECASTED at 100%",
+   "ACTUAL at 80%",
+   "Neither \u2014 budgets only report after the fact"
   ],
   "answer": 1,
-  "why": "An egress-only internet gateway is the IPv6 counterpart to a NAT gateway: outbound-only, stateful, horizontally scaled and <strong>free</strong>. NAT gateways and NAT instances handle IPv4 only. IPv6 addresses are globally routable, so a plain internet gateway would leave the instances inbound-reachable."
+  "why": "A <strong>FORECASTED</strong> notification projects the month's trend and fires when the projection crosses the threshold \u2014 before the spend happens, which is the only alert that leaves time to act. ACTUAL alerts fire after the money is gone, and are the backstop for a spike the forecast has not caught."
  },
  {
-  "q": "A security team enables VPC Flow Logs at the VPC level with <code>TrafficType: ALL</code>. Which traffic will <em>not</em> appear in the logs?",
+  "q": "A workload runs 24/7 with predictable, steady usage for the next three years. Which pricing model minimises cost?",
   "options": [
-   "Rejected inbound SSH attempts",
-   "Traffic between two instances in different subnets of the same VPC",
-   "Requests to the instance metadata service at <code>169.254.169.254</code>",
-   "Outbound HTTPS traffic to the internet through a NAT gateway"
-  ],
-  "answer": 2,
-  "why": "Flow logs exclude traffic to the instance metadata service, the Amazon DNS server, DHCP, Windows license activation, and the reserved VPC router address. They <em>do</em> capture rejected traffic, intra-VPC traffic, and NAT-bound traffic \u2014 the <code>ACCEPT</code>/<code>REJECT</code> field is your evidence of which control dropped a packet."
- },
- {
-  "q": "A single malicious IP address is attacking a public-facing application. The team wants to block that one address at the subnet boundary while allowing all other traffic. What should they use?",
-  "options": [
-   "A security group inbound deny rule",
-   "A network ACL inbound deny rule",
-   "A security group with the IP removed from the allow list",
-   "An egress-only internet gateway"
+   "On-demand instances",
+   "A Compute Savings Plan or Reserved Instances",
+   "Spot instances",
+   "Dedicated hosts"
   ],
   "answer": 1,
-  "why": "Security groups support <strong>allow rules only</strong> \u2014 there is no deny. Blocking a specific source requires a network ACL, which supports allow and deny and is evaluated in rule-number order, lowest first, first match wins. Any exam question about blocking one IP is a NACL question."
+  "why": "<strong>Savings Plans and Reserved Instances</strong> trade a one- or three-year commitment for up to ~72% off \u2014 the right answer whenever usage is described as steady and predictable. Spot suits interruptible work. Dedicated hosts address licensing and compliance isolation, not cost."
  },
  {
-  "q": "A workload requires that the device performing network address translation be protected by a security group, and that the same device also serve as a bastion host. Which option meets both requirements?",
+  "q": "A batch job can be interrupted and restarted at any time, and runs whenever capacity is cheap. Which purchasing option fits?",
   "options": [
-   "A NAT gateway",
-   "A NAT instance",
-   "An egress-only internet gateway",
-   "An internet gateway"
+   "Reserved Instances",
+   "Spot Instances",
+   "On-demand with an Auto Scaling group",
+   "Savings Plans"
   ],
   "answer": 1,
-  "why": "A NAT <strong>instance</strong> is an ordinary EC2 instance, so it can carry a security group and double as a bastion. A NAT <strong>gateway</strong> supports neither \u2014 only the subnet's network ACL applies to it. The trade-off is that NAT instances need manual HA, patching, and source/destination checking disabled."
+  "why": "<strong>Spot</strong> offers up to 90% off spare capacity, reclaimed with a two-minute warning \u2014 ideal for fault-tolerant, interruptible work such as batch processing, CI and rendering. The exam signals Spot with \"interruptible\", \"fault-tolerant\", \"flexible start and end times\"."
  },
  {
-  "q": "A development VPC has a NAT gateway that processes essentially no traffic outside business hours. The team is surprised by the monthly bill. Why?",
+  "q": "An organisation must prevent any member account from disabling CloudTrail, including by the account's root user. What achieves this?",
   "options": [
-   "NAT gateways bill per connection, and idle connections still count",
-   "NAT gateways bill an hourly charge regardless of traffic, plus a per-GB data processing charge",
-   "The Elastic IP is billed at a premium when attached to a NAT gateway",
-   "NAT gateways bill a minimum of 1 TB of data processing per month"
+   "An IAM policy denying cloudtrail:StopLogging on each account's admin role",
+   "A service control policy in AWS Organizations",
+   "A permission boundary applied to all roles",
+   "Enabling log file validation"
   ],
   "answer": 1,
-  "why": "A NAT gateway bills roughly <strong>$0.059/hour whether or not a single packet crosses it</strong> \u2014 about <strong>$43/month idle</strong> \u2014 plus $0.0059 per GB processed. It is the most common cause of surprise charges in a personal AWS account, and the reason this lab verifies teardown with a tag sweep instead of trusting <code>DELETE_COMPLETE</code>."
+  "why": "A <strong>service control policy</strong> is a ceiling on an entire account and <strong>applies to the root user too</strong>. IAM policies can be edited by an account administrator. A permission boundary only affects principals that carry it. Log file validation detects tampering but does not prevent stopping the trail."
+ },
+ {
+  "q": "Which statement correctly distinguishes CloudWatch from CloudTrail?",
+  "options": [
+   "CloudWatch records API calls; CloudTrail records metrics",
+   "CloudWatch records metrics and logs about behaviour; CloudTrail records who made which API calls",
+   "They are the same service under different names",
+   "CloudWatch is for billing; CloudTrail is for performance"
+  ],
+  "answer": 1,
+  "why": "<strong>CloudWatch</strong> answers how busy, how slow, how many errors \u2014 metrics, logs and alarms about behaviour. <strong>CloudTrail</strong> answers who called what, and when. <strong>Config</strong> is the third: what a resource looks like now and whether that is allowed. Questions routinely offer one when they need another."
+ },
+ {
+  "q": "A company wants to allocate AWS costs to individual teams. What is the prerequisite?",
+  "options": [
+   "Separate AWS accounts for every team",
+   "A consistent tagging strategy with cost allocation tags activated",
+   "Enabling CloudTrail data events",
+   "Purchasing Reserved Instances per team"
+  ],
+  "answer": 1,
+  "why": "<strong>Cost allocation tags</strong> \u2014 activated in the billing console and applied consistently \u2014 let Cost Explorer and billing reports break spend down by team, project or environment. Separate accounts also work and give harder boundaries, but tagging is the prerequisite either way, and an untagged resource is unattributable."
+ },
+ {
+  "q": "Which statement about AWS Config pricing is correct?",
+  "options": [
+   "It is free for the first 100 rules",
+   "It charges per configuration item recorded and per rule evaluation",
+   "It charges a flat monthly fee per region",
+   "It is included with a Business support plan"
+  ],
+  "answer": 1,
+  "why": "Config bills roughly <strong>$0.003 per configuration item recorded</strong> plus about $0.001 per rule evaluation. Recording <code>AllSupported</code> resource types in a busy account generates items on every change and is a common source of unexpected charges \u2014 which is why this lab scopes the recorder to four types."
+ },
+ {
+  "q": "Which service provides recommendations across cost, performance, security, fault tolerance and service limits?",
+  "options": [
+   "AWS Config",
+   "AWS Trusted Advisor",
+   "AWS Compute Optimizer",
+   "Amazon Inspector"
+  ],
+  "answer": 1,
+  "why": "<strong>Trusted Advisor</strong> spans five pillars, though the full check set requires a Business or Enterprise support plan. <strong>Compute Optimizer</strong> is narrower and deeper: right-sizing recommendations for EC2, EBS, Lambda and ECS based on observed utilisation. Inspector scans workloads for vulnerabilities."
  }
 ];
 

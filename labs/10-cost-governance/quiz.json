@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 10",
+  "title": "Governance And Cost Drill",
+  "intro": "Twelve scenario questions on CloudTrail, Config, CloudWatch, budgets and pricing models. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 10 — Who did it, and what it cost. Reference notes: exam-notes.md",
+  "notes_title": "Lab 10 (Cost and governance)",
+  "notes_intro": "Twelve SAA-C03-style questions on auditing, compliance and cost control, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "A security team needs to know which IAM user deleted a production S3 bucket last Tuesday, and from what IP address. Which service answers this?",
+      "options": [
+        "AWS Config",
+        "AWS CloudTrail",
+        "Amazon CloudWatch",
+        "AWS Trusted Advisor"
+      ],
+      "answer": 1,
+      "why": "<strong>CloudTrail is a ledger of API calls</strong> — who, when, from where, and what parameters. Config records resource <em>state</em> and would show the bucket vanished, but not who did it. CloudWatch records metrics and logs about behaviour. Any question with \"who\", \"when\" or \"which user\" is CloudTrail."
+    },
+    {
+      "q": "A compliance team needs a continuously updated list of which security groups currently allow unrestricted inbound SSH. Which service is designed for this?",
+      "options": [
+        "CloudTrail with an event filter",
+        "AWS Config with a managed rule",
+        "CloudWatch Logs Insights",
+        "Amazon Inspector"
+      ],
+      "answer": 1,
+      "why": "<strong>Config evaluates current resource state against rules</strong> and reports compliant or non-compliant, with configuration history. The managed rule here is <code>INCOMING_SSH_DISABLED</code>. CloudTrail would show the API call that opened the port, but cannot list what is open right now."
+    },
+    {
+      "q": "A CloudTrail trail is created in ap-southeast-2 only. An engineer makes changes in us-east-1. What happens?",
+      "options": [
+        "The changes are recorded, because CloudTrail is always global",
+        "The changes are not recorded by that trail unless it is multi-region",
+        "The changes are recorded but only for 90 days",
+        "CloudTrail automatically creates a trail in the new region"
+      ],
+      "answer": 1,
+      "why": "A single-region trail records only that region's events, so activity elsewhere is invisible to it. <strong>Always create multi-region trails</strong>, and enable global service events. Note that the console's 90-day Event History exists in every region regardless, which sometimes masks the gap until an audit."
+    },
+    {
+      "q": "A company enables CloudTrail data events for all S3 buckets and receives an unexpectedly large bill. Why?",
+      "options": [
+        "Management events are charged per event",
+        "Data events log every object-level operation, which on busy buckets is millions of events",
+        "Multi-region trails cost double",
+        "Log file validation adds a per-event charge"
+      ],
+      "answer": 1,
+      "why": "The first copy of <strong>management events</strong> is free. <strong>Data events</strong> — every GetObject, PutObject, Lambda invoke — are charged per event and are the standard cause of a shocking CloudTrail bill. Enable them selectively, on the buckets that actually need object-level auditing."
+    },
+    {
+      "q": "Which budget notification type warns you before the money is spent?",
+      "options": [
+        "ACTUAL at 100%",
+        "FORECASTED at 100%",
+        "ACTUAL at 80%",
+        "Neither — budgets only report after the fact"
+      ],
+      "answer": 1,
+      "why": "A <strong>FORECASTED</strong> notification projects the month's trend and fires when the projection crosses the threshold — before the spend happens, which is the only alert that leaves time to act. ACTUAL alerts fire after the money is gone, and are the backstop for a spike the forecast has not caught."
+    },
+    {
+      "q": "A workload runs 24/7 with predictable, steady usage for the next three years. Which pricing model minimises cost?",
+      "options": [
+        "On-demand instances",
+        "A Compute Savings Plan or Reserved Instances",
+        "Spot instances",
+        "Dedicated hosts"
+      ],
+      "answer": 1,
+      "why": "<strong>Savings Plans and Reserved Instances</strong> trade a one- or three-year commitment for up to ~72% off — the right answer whenever usage is described as steady and predictable. Spot suits interruptible work. Dedicated hosts address licensing and compliance isolation, not cost."
+    },
+    {
+      "q": "A batch job can be interrupted and restarted at any time, and runs whenever capacity is cheap. Which purchasing option fits?",
+      "options": [
+        "Reserved Instances",
+        "Spot Instances",
+        "On-demand with an Auto Scaling group",
+        "Savings Plans"
+      ],
+      "answer": 1,
+      "why": "<strong>Spot</strong> offers up to 90% off spare capacity, reclaimed with a two-minute warning — ideal for fault-tolerant, interruptible work such as batch processing, CI and rendering. The exam signals Spot with \"interruptible\", \"fault-tolerant\", \"flexible start and end times\"."
+    },
+    {
+      "q": "An organisation must prevent any member account from disabling CloudTrail, including by the account's root user. What achieves this?",
+      "options": [
+        "An IAM policy denying cloudtrail:StopLogging on each account's admin role",
+        "A service control policy in AWS Organizations",
+        "A permission boundary applied to all roles",
+        "Enabling log file validation"
+      ],
+      "answer": 1,
+      "why": "A <strong>service control policy</strong> is a ceiling on an entire account and <strong>applies to the root user too</strong>. IAM policies can be edited by an account administrator. A permission boundary only affects principals that carry it. Log file validation detects tampering but does not prevent stopping the trail."
+    },
+    {
+      "q": "Which statement correctly distinguishes CloudWatch from CloudTrail?",
+      "options": [
+        "CloudWatch records API calls; CloudTrail records metrics",
+        "CloudWatch records metrics and logs about behaviour; CloudTrail records who made which API calls",
+        "They are the same service under different names",
+        "CloudWatch is for billing; CloudTrail is for performance"
+      ],
+      "answer": 1,
+      "why": "<strong>CloudWatch</strong> answers how busy, how slow, how many errors — metrics, logs and alarms about behaviour. <strong>CloudTrail</strong> answers who called what, and when. <strong>Config</strong> is the third: what a resource looks like now and whether that is allowed. Questions routinely offer one when they need another."
+    },
+    {
+      "q": "A company wants to allocate AWS costs to individual teams. What is the prerequisite?",
+      "options": [
+        "Separate AWS accounts for every team",
+        "A consistent tagging strategy with cost allocation tags activated",
+        "Enabling CloudTrail data events",
+        "Purchasing Reserved Instances per team"
+      ],
+      "answer": 1,
+      "why": "<strong>Cost allocation tags</strong> — activated in the billing console and applied consistently — let Cost Explorer and billing reports break spend down by team, project or environment. Separate accounts also work and give harder boundaries, but tagging is the prerequisite either way, and an untagged resource is unattributable."
+    },
+    {
+      "q": "Which statement about AWS Config pricing is correct?",
+      "options": [
+        "It is free for the first 100 rules",
+        "It charges per configuration item recorded and per rule evaluation",
+        "It charges a flat monthly fee per region",
+        "It is included with a Business support plan"
+      ],
+      "answer": 1,
+      "why": "Config bills roughly <strong>$0.003 per configuration item recorded</strong> plus about $0.001 per rule evaluation. Recording <code>AllSupported</code> resource types in a busy account generates items on every change and is a common source of unexpected charges — which is why this lab scopes the recorder to four types."
+    },
+    {
+      "q": "Which service provides recommendations across cost, performance, security, fault tolerance and service limits?",
+      "options": [
+        "AWS Config",
+        "AWS Trusted Advisor",
+        "AWS Compute Optimizer",
+        "Amazon Inspector"
+      ],
+      "answer": 1,
+      "why": "<strong>Trusted Advisor</strong> spans five pillars, though the full check set requires a Business or Enterprise support plan. <strong>Compute Optimizer</strong> is narrower and deeper: right-sizing recommendations for EC2, EBS, Lambda and ECS based on observed utilisation. Inspector scans workloads for vulnerabilities."
+    }
+  ]
+}
