@@ -1,7 +1,7 @@
 # AWS Architect Associate — Learning Through Projects
 
 Studying for the AWS Certified Solutions Architect – Associate (SAA-C03) exam by **building** the
-architectures rather than reading about them. Ten labs, each deployed into a real AWS account,
+architectures rather than reading about them. Eleven labs, each deployed into a real AWS account,
 inspected in the console against its own architecture diagram, deliberately broken to see what
 happens, then destroyed.
 
@@ -9,7 +9,7 @@ happens, then destroyed.
 
 ---
 
-## The ten labs
+## The eleven labs
 
 Each has an architecture document with a hand-drawn topology diagram, a CloudFormation template, a
 click-by-click console tour with a failure injection, a read-only verification script, and twelve
@@ -27,17 +27,18 @@ exam-style questions.
 | 08 | [DR patterns](labs/08-dr-patterns/) | Route 53 failover, health checks, versioning, PITR | 0.0014 | D1 D2 |
 | 09 | [Caching](labs/09-caching/) | Cache-aside with Redis, VPC Lambda, gateway endpoint | 0.028 | D1 D3 D4 |
 | 10 | [Cost & governance](labs/10-cost-governance/) | CloudTrail, Config rules, budgets with forecast alerts | ~0.000 | D1 D4 |
+| 11 | [DynamoDB deep dive](labs/11-dynamodb-deep-dive/) | GSI + LSI, conditional writes, transactions, Streams → Lambda, TTL, PITR | **0.000** | D1 D3 D4 |
 
-**Total cost to run all ten** — deploying each, touring it, and destroying it — is well under $1.
+**Total cost to run all eleven** — deploying each, touring it, and destroying it — is well under $1.
 
 ### Exam domain coverage
 
 | Domain | Weight | Labs |
 |---|---|---|
-| D1 — Design Secure Architectures | 30% | 01, 02, 03, 06, 07, 08, 09, 10 |
+| D1 — Design Secure Architectures | 30% | 01, 02, 03, 06, 07, 08, 09, 10, 11 |
 | D2 — Design Resilient Architectures | 26% | 01, 02, 03, 05, 08 |
-| D3 — Design High-Performing Architectures | 24% | 02, 04, 05, 06, 09 |
-| D4 — Design Cost-Optimized Architectures | 20% | 01, 02, 03, 04, 05, 06, 09, 10 |
+| D3 — Design High-Performing Architectures | 24% | 02, 04, 05, 06, 09, 11 |
+| D4 — Design Cost-Optimized Architectures | 20% | 01, 02, 03, 04, 05, 06, 09, 10, 11 |
 
 ---
 

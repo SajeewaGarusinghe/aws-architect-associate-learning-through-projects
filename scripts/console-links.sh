@@ -56,6 +56,20 @@ ASG=$(aws autoscaling describe-auto-scaling-groups \
 if [[ "$ASG" != "None" && -n "$ASG" ]]; then
 echo "  Auto Scaling   $C/ec2/home?region=$R#AutoScalingGroupDetails:id=$ASG;view=activity"
 fi
+TABLE=$(aws dynamodb list-tables --query "TableNames[?starts_with(@,'saa-lab-')]|[0]" --output text 2>/dev/null || echo None)
+if [[ "$TABLE" != "None" && -n "$TABLE" ]]; then
+echo
+echo "DynamoDB:"
+echo "  Table          $C/dynamodbv2/home?region=$R#table?name=$TABLE"
+echo "  Explore items  $C/dynamodbv2/home?region=$R#item-explorer?table=$TABLE"
+fi
+FN=$(aws lambda list-functions --query "Functions[?starts_with(FunctionName,'saa-lab-')]|[0].FunctionName" --output text 2>/dev/null || echo None)
+if [[ "$FN" != "None" && -n "$FN" ]]; then
+echo
+echo "Lambda:"
+echo "  Function       $C/lambda/home?region=$R#/functions/$FN"
+fi
+
 echo
 echo "Observability:"
 echo "  Flow logs      $C/cloudwatch/home?region=$R#logsV2:log-groups"

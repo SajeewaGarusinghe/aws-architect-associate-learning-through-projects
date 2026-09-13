@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SAA Lab 11 - DynamoDB Deep Dive. One table carrying two item types (orders
+  and products), a GSI for a cross-partition access pattern, an LSI for an
+  alternate sort order, TTL, point-in-time recovery, and a Streams-triggered
+  Lambda that writes an audit trail. No VPC, no instances, no hourly charge.
+
+Parameters:
+  LabName:
+    Type: String
+    Default: saa-lab-11
+
+Resources:
+
+  # ------------------------------------------------------------------- storage
+  # Single-table design: orders (pk=CUSTOMER#.. sk=ORDER#..) and products
+  # (pk=PRODUCT#.. sk=PRODUCT#..) share one table. On-demand billing, same as
+  # Lab 04 - nothing bills while the table sits idle.
+  #
+  # GSI1 flips the access pattern: "every order in a given status" is a Query
+  # against one GSI partition instead of a Scan of the whole table. Only items
+  # carrying a `status` attribute are projected into it - products never
+  # appear there, which is what a sparse index looks like.
+  #
+  # LSI1 keeps the *same* partition key as the base table (a hard requirement
+  # for any LSI) but sorts by `total` instead of `sk` - "this customer's
+  # orders, biggest first" without a second table or a GSI.
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub '${LabName}-orders'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+        - { AttributeName: total, AttributeType: N }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1-status-by-time
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      LocalSecondaryIndexes:
+        - IndexName: lsi1-by-total
+          KeySchema:
+            - { AttributeName: pk, KeyType: HASH }
+            - { AttributeName: total, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      # Background sweep deletes expired items within ~48h of expiresAt, at no
+      # cost and without consuming write capacity. Used here to auto-expire
+      # abandoned PENDING orders.
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      # NEW_AND_OLD_IMAGES is the only view type that lets the consumer see
+      # both what changed and what it changed from - required to detect a
+      # status transition rather than just "this item was written".
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - { Key: Name, Value: !Sub '${LabName}-orders' }
+
+  # ------------------------------------------------------------------ compute
+  # Reacts to the table's own change stream. This is what turns "a row changed"
+  # into "something happened" without polling - the same mechanism behind
+  # replication, search-index sync and cross-region global tables.
+  StreamProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${LabName}-stream-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: stream-read-and-audit-write
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Reading the stream is a separate permission from reading the
+              # table - this ARN is the table ARN plus /stream/*, not the
+              # table ARN itself.
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                Resource: !Sub '${Table.Arn}/stream/*'
+              # Writing the audit trail back needs the table ARN itself, and
+              # only PutItem - this is what the failure injection removes.
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt Table.Arn
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-stream-role' }]
+
+  StreamLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LabName}-stream-processor'
+      RetentionInDays: 1
+
+  StreamProcessorFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: StreamLogGroup
+    Properties:
+      FunctionName: !Sub '${LabName}-stream-processor'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt StreamProcessorRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+      Code:
+        ZipFile: |
+          import os, time
+          import boto3
+          from boto3.dynamodb.types import TypeDeserializer
+
+          TABLE = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
+          DESERIALIZE = TypeDeserializer().deserialize
+
+          def image(raw):
+              return {k: DESERIALIZE(v) for k, v in (raw or {}).items()}
+
+          def handler(event, context):
+              audited = 0
+              for record in event.get("Records", []):
+                  name = record["eventName"]  # INSERT | MODIFY | REMOVE
+                  ddb = record["dynamodb"]
+                  new, old = image(ddb.get("NewImage")), image(ddb.get("OldImage"))
+                  pk = new.get("pk") or old.get("pk", "")
+                  sk = new.get("sk") or old.get("sk", "")
+
+                  # Only orders carry a status worth auditing - product writes
+                  # and the audit items this function itself creates are
+                  # skipped, or every write would recursively trigger another.
+                  if not sk.startswith("ORDER#"):
+                      continue
+
+                  if name == "INSERT":
+                      detail = f"order created, status {new.get('status')}"
+                  elif name == "REMOVE":
+                      # TTL deletions arrive on the stream exactly like any
+                      # other delete, but the record carries this flag.
+                      via_ttl = ddb.get("UserIdentity", {}).get("Type") == "Service"
+                      detail = "order expired via TTL" if via_ttl else "order deleted"
+                  elif name == "MODIFY" and old.get("status") != new.get("status"):
+                      detail = f"status changed: {old.get('status')} -> {new.get('status')}"
+                  else:
+                      continue  # a modify that did not touch status - nothing to log
+
+                  TABLE.put_item(Item={
+                      "pk": "AUDIT",
+                      "sk": f"{int(time.time() * 1000)}#{record['eventID']}",
+                      "order": f"{pk}#{sk}",
+                      "eventName": name,
+                      "detail": detail,
+                  })
+                  audited += 1
+                  print(f"AUDIT {pk}#{sk}: {detail}")
+
+              return {"records": len(event.get("Records", [])), "audited": audited}
+      Tags: [{ Key: Name, Value: !Sub '${LabName}-stream-processor' }]
+
+  # Polls the stream's shards on the platform's schedule - there is no cron
+  # here, and no charge while the table is quiet.
+  StreamMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt Table.StreamArn
+      FunctionName: !Ref StreamProcessorFunction
+      StartingPosition: LATEST
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 1
+
+Outputs:
+  TableName:   { Value: !Ref Table }
+  TableArn:    { Value: !GetAtt Table.Arn }
+  StreamArn:   { Value: !GetAtt Table.StreamArn }
+  FunctionName: { Value: !Ref StreamProcessorFunction }
+  LogGroup:    { Value: !Ref StreamLogGroup }
+  IdleCost:
+    Description: What this stack costs while nobody uses it
+    Value: 'USD 0.00 per hour - on-demand table, event-driven Lambda, PITR billed per GB stored'

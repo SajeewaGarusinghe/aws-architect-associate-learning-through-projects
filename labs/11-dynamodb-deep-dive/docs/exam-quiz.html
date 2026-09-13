@@ -1,0 +1,359 @@
+<title>DynamoDB Deep Dive Exam Drill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root{
+    --bg:#F7F6F4; --surface:#FFFFFF; --surface-2:#FBFAF9;
+    --ink:#232F3E; --body:#3A4552; --muted:#6B7480; --line:#E4E2DE;
+    --accent:#C25A08; --accent-br:#FF9900; --navy:#232F3E;
+    --good:#13795B; --good-bg:#E9F6F1; --good-line:#A8DCC8;
+    --bad:#B0332A; --bad-bg:#FCECEA; --bad-line:#EFBDB6;
+    --shadow:0 1px 2px rgba(35,47,62,.06), 0 8px 24px rgba(35,47,62,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141B24; --surface:#1D2631; --surface-2:#222C38;
+      --ink:#EAEEF3; --body:#C2CBD5; --muted:#8B96A3; --line:#2F3A47;
+      --accent:#FFA92B; --accent-br:#FF9900; --navy:#0F151C;
+      --good:#3FD3A3; --good-bg:#123026; --good-line:#1E5943;
+      --bad:#F58374; --bad-bg:#321A18; --bad-line:#6B2C25;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141B24; --surface:#1D2631; --surface-2:#222C38;
+    --ink:#EAEEF3; --body:#C2CBD5; --muted:#8B96A3; --line:#2F3A47;
+    --accent:#FFA92B; --accent-br:#FF9900; --navy:#0F151C;
+    --good:#3FD3A3; --good-bg:#123026; --good-line:#1E5943;
+    --bad:#F58374; --bad-bg:#321A18; --bad-line:#6B2C25;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--body);margin:0;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.6;}
+  .wrap{max-width:720px;margin:0 auto;padding-block:0 56px;padding-left:16px;padding-right:16px;}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:.88em;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink);}
+
+  header{background:var(--navy);margin:0 -16px 28px;padding:30px 16px 26px;position:relative;overflow:hidden;}
+  header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--accent-br);}
+  header::before{content:"";position:absolute;right:-100px;top:-130px;width:360px;height:360px;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,153,0,.15),transparent 68%);}
+  .eyebrow{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-br);font-weight:600;margin-bottom:10px;}
+  header h1{margin:0 0 6px;font-size:26px;font-weight:800;letter-spacing:-.015em;color:#fff;text-wrap:balance;}
+  header p{margin:0;color:#A8B2BD;font-size:14px;max-width:52ch;}
+
+  .bar{display:flex;align-items:center;gap:14px;margin-top:20px;position:relative;}
+  .track{flex:1;height:5px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden;}
+  .fill{height:100%;width:0;background:var(--accent-br);border-radius:3px;transition:width .35s ease;}
+  .tally{font-size:12px;color:#A8B2BD;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500;}
+  .tally b{color:#fff;font-weight:700;}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;box-shadow:var(--shadow);}
+  .qnum{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:10px;}
+  .qtext{font-size:17px;color:var(--ink);font-weight:500;margin:0 0 18px;line-height:1.5;text-wrap:pretty;}
+
+  .opts{display:flex;flex-direction:column;gap:8px;}
+  .opt{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;
+    background:var(--surface-2);border:1.5px solid var(--line);border-radius:9px;padding:12px 14px;
+    font:inherit;font-size:14.5px;color:var(--body);cursor:pointer;transition:border-color .15s,background .15s;}
+  .opt:hover:not(:disabled){border-color:var(--accent);}
+  .opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .opt:disabled{cursor:default;}
+  .opt .key{flex:none;width:22px;height:22px;border-radius:5px;background:var(--line);color:var(--ink);
+    font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+  .opt.right{background:var(--good-bg);border-color:var(--good-line);}
+  .opt.right .key{background:var(--good);color:#fff;}
+  .opt.wrong{background:var(--bad-bg);border-color:var(--bad-line);}
+  .opt.wrong .key{background:var(--bad);color:#fff;}
+
+  .why{margin-top:16px;border-left:3px solid var(--accent-br);background:var(--surface-2);
+    border-radius:0 8px 8px 0;padding:13px 16px;font-size:14px;color:var(--body);}
+  .why .vl{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:5px;}
+  .why.ok .vl{color:var(--good);}
+  .why.no .vl{color:var(--bad);}
+  .why strong{color:var(--ink);font-weight:600;}
+
+  .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
+  .btn{font:inherit;font-size:14px;font-weight:600;padding:10px 20px;border-radius:8px;cursor:pointer;
+    border:1.5px solid transparent;background:var(--navy);color:#fff;transition:opacity .15s;}
+  .btn:hover{opacity:.88;}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--body);}
+
+  .done{text-align:center;padding:14px 0 4px;}
+  .score{font-size:52px;font-weight:800;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
+  .score span{color:var(--muted);font-size:24px;font-weight:600;}
+  .verdict{font-size:15px;color:var(--body);margin:12px auto 0;max-width:46ch;}
+  .missed{margin-top:22px;text-align:left;}
+  .missed h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px;font-weight:700;}
+  .missed li{font-size:14px;margin-bottom:7px;color:var(--body);}
+  .missed li::marker{color:var(--bad);}
+
+  footer{margin-top:26px;font-size:12.5px;color:var(--muted);text-align:center;}
+
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;}}
+  @media (max-width:480px){ header h1{font-size:22px;} .qtext{font-size:16px;} .card{padding:18px;} }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SAA-C03 · Lab 11</div>
+    <h1>DynamoDB Deep Dive Exam Drill</h1>
+    <p>Twelve scenario questions on keys, indexes, capacity, consistency and Streams. Answer cold — the explanation appears after each choice.</p>
+    <div class="bar">
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <div class="tally" id="tally"><b>0</b>/12 correct</div>
+    </div>
+  </header>
+
+  <div id="stage"></div>
+
+  <footer>Drawn from Lab 11 — DynamoDB deep dive. Reference notes: exam-notes.md</footer>
+</div>
+
+<script>
+const Q = [
+ {
+  "q": "A table uses customerId as the partition key. One customer places far more orders than any other, and that customer's requests start getting throttled while the table's overall consumed capacity is well under its provisioned limit. What is happening?",
+  "options": [
+   "The table needs a global secondary index",
+   "A hot partition \u2014 traffic to one partition key exceeds that partition's share of throughput, regardless of the table-wide total",
+   "DynamoDB requires manual partition rebalancing that has not been triggered yet",
+   "The item size for that customer's items exceeds 400 KB"
+  ],
+  "answer": 1,
+  "why": "Throughput is spread across partitions, not just across the table. A single very active partition key can be throttled even when the table overall has capacity to spare \u2014 this is a <strong>hot partition</strong>. Adaptive capacity and on-demand mode both help absorb it, but the durable fix is a partition key with higher cardinality, such as adding a random or time-based suffix to spread the load."
+ },
+ {
+  "q": "A table's access pattern is entirely unpredictable \u2014 sometimes zero requests for hours, sometimes a burst of thousands per second with no warning. Which billing mode fits best, and why?",
+  "options": [
+   "Provisioned capacity with auto scaling, because it reacts to the burst",
+   "On-demand, because it charges per request with no capacity to plan for and scales instantly to bursts",
+   "Provisioned capacity with reserved capacity purchased in advance",
+   "On-demand cannot handle sudden bursts, so provisioned is required"
+  ],
+  "answer": 1,
+  "why": "<strong>On-demand</strong> bills per request and scales immediately, which is exactly suited to unpredictable, spiky traffic. Provisioned capacity with auto scaling reacts on a delay \u2014 it adjusts based on consumption metrics, so a sudden burst can be throttled before scaling catches up. Provisioned capacity is the better economic choice only once traffic is steady enough to forecast."
+ },
+ {
+  "q": "A table has partition key orderId. A new requirement needs 'every order placed by a given customer, newest first' \u2014 a query that doesn't exist today. What is the standard fix?",
+  "options": [
+   "Change the base table's partition key to customerId",
+   "Add a global secondary index with customerId as its partition key and a timestamp as its sort key",
+   "Scan the table and filter by customerId in application code",
+   "Add a local secondary index with customerId as its partition key"
+  ],
+  "answer": 1,
+  "why": "A <strong>GSI</strong> can have an entirely different partition key from the base table, which is exactly what's needed here. An <strong>LSI is not an option</strong> \u2014 it must share the base table's partition key. Changing the base table's key schema isn't possible after creation, and Scan-and-filter reads (and bills for) the whole table."
+ },
+ {
+  "q": "Which statement correctly distinguishes a local secondary index from a global secondary index?",
+  "options": [
+   "An LSI must be created when the table is created and shares the base table's partition key; a GSI can be added or removed at any time with its own partition key",
+   "A GSI must be created when the table is created; an LSI can be added later",
+   "An LSI supports strongly consistent reads and a GSI does not \u2014 otherwise they are interchangeable",
+   "A GSI is limited to five per table; an LSI has no such limit"
+  ],
+  "answer": 0,
+  "why": "The creation-time constraint is the detail the exam leans on hardest: an <strong>LSI</strong> can only be declared when the table is created, is limited to five per table, and always shares the base table's partition key with a different sort key. A <strong>GSI</strong> can be added or removed on a live table, has its own partition and sort key, and supports up to twenty per table by default. The consistency point is real but reversed as a distinguishing feature \u2014 LSIs optionally support strongly consistent reads; GSIs are eventually consistent only."
+ },
+ {
+  "q": "An UpdateItem call includes ConditionExpression 'stock > :zero'. Concurrent requests hit the same item when stock is already 0. What happens?",
+  "options": [
+   "All requests succeed and stock goes negative",
+   "The requests are queued and retried automatically by DynamoDB until stock becomes positive",
+   "Every request whose condition fails returns ConditionalCheckFailedException immediately, and the item is left unchanged",
+   "The first request succeeds and all others are silently dropped"
+  ],
+  "answer": 2,
+  "why": "A condition expression makes the check and the write one atomic operation. Any call where the condition evaluates false gets <strong>ConditionalCheckFailedException</strong> back immediately and makes no change \u2014 there is no queueing or retry built in. This is the standard way to prevent overselling or lost updates without a separate locking service."
+ },
+ {
+  "q": "An application needs to create an order and decrement matching stock, and must never end up with one write applied and not the other. Which DynamoDB feature fits?",
+  "options": [
+   "Two separate PutItem/UpdateItem calls wrapped in a try/except block",
+   "BatchWriteItem, which applies all items in the batch as a single unit",
+   "TransactWriteItems, which applies up to 100 actions across one or more tables as a single all-or-nothing operation",
+   "DynamoDB Streams, replaying the order write from the change log"
+  ],
+  "answer": 2,
+  "why": "<strong>TransactWriteItems</strong> is the only one of these that is genuinely atomic across multiple items \u2014 all actions succeed together or none do. <strong>BatchWriteItem is a common trap</strong>: despite the name, it makes independent per-item writes and a partial failure can leave some items written and others not. It roughly doubles the consumed write capacity compared to the same writes done individually, which is the cost of the atomicity guarantee."
+ },
+ {
+  "q": "A DynamoDB table has Streams enabled with view type NEW_AND_OLD_IMAGES, feeding a Lambda function via an event source mapping. An item is deleted because its TTL attribute expired. What does the Lambda function see?",
+  "options": [
+   "Nothing \u2014 TTL deletions do not appear on the stream",
+   "A REMOVE event carrying the item's last image, distinguishable from a manual delete by a system principal in the record",
+   "An INSERT event, because TTL creates a tombstone record",
+   "The function is not invoked because TTL deletions are asynchronous"
+  ],
+  "answer": 1,
+  "why": "TTL deletions are <strong>free of write-capacity charge</strong> but still appear on the stream as an ordinary <strong>REMOVE</strong> event, carrying the old image. The record identifies the deletion as coming from the DynamoDB service rather than a user or role, which is how a consumer tells a TTL expiry apart from an application-issued delete."
+ },
+ {
+  "q": "A query against a table's base table returns stale results immediately after a write completes on a different node handling that request. What read type was used, and how would this be avoided?",
+  "options": [
+   "Strongly consistent read used by default; disable it to avoid staleness",
+   "Eventually consistent read, the default; request ConsistentRead=true for a strongly consistent read, at roughly double the read capacity cost",
+   "Eventually consistent reads cannot be made consistent without switching to a global table",
+   "The behavior is a bug; DynamoDB reads are always immediately consistent by default"
+  ],
+  "answer": 1,
+  "why": "DynamoDB defaults to <strong>eventually consistent reads</strong>, which cost half the read capacity of a strongly consistent read and may briefly reflect stale data after a very recent write. Passing <strong>ConsistentRead=true</strong> (GetItem, Query, Scan) requests a strongly consistent read from the leader, at double the RCU cost \u2014 and it is not available at all against a global secondary index."
+ },
+ {
+  "q": "A read-heavy DynamoDB table backs a product catalog with the same handful of items read far more often than everything else. Latency needs to drop from single-digit milliseconds to microseconds. What should be added?",
+  "options": [
+   "A global secondary index on the most-read attribute",
+   "DAX (DynamoDB Accelerator) as an in-memory cache in front of the table, requiring no application logic changes for cached reads",
+   "Switch the table to provisioned capacity with a higher RCU value",
+   "Enable DynamoDB Streams and cache reads in the Lambda function"
+  ],
+  "answer": 1,
+  "why": "<strong>DAX</strong> is a managed, write-through, in-memory cache purpose-built for DynamoDB, cutting read latency from milliseconds to microseconds for cached items with minimal code change (the DAX client is API-compatible with the DynamoDB SDK). A GSI changes what you can query, not how fast a repeated read returns; more RCUs raise throughput ceilings, not latency for hot items."
+ },
+ {
+  "q": "An application must remain available for both reads and writes even if an entire AWS Region becomes unavailable, with automatic multi-active replication and no manual failover step. What DynamoDB feature provides this?",
+  "options": [
+   "Point-in-time recovery restored into a second region after an outage",
+   "On-demand backups copied cross-region on a schedule",
+   "Global tables \u2014 multi-region, multi-active replication with typically sub-second propagation and no application-triggered failover",
+   "A read replica in a second region, promoted manually during an outage"
+  ],
+  "answer": 2,
+  "why": "<strong>Global tables</strong> replicate a table across chosen regions with active-active reads and writes in every region \u2014 there is no primary to fail over, and no manual promotion step. PITR and on-demand backups protect against data loss and corruption, not regional unavailability, and DynamoDB has no concept of a manually promoted read replica the way RDS does."
+ },
+ {
+  "q": "A nightly batch job scans an entire 50 GB table to build a report, and the team wants to eliminate the throughput impact of that scan on the table's normal traffic without changing the report's logic. What is the most direct fix?",
+  "options": [
+   "Increase provisioned RCUs permanently to absorb the scan",
+   "Run the same Scan against a read replica of the table",
+   "Export the table to Amazon S3 (DynamoDB's built-in export feature) and run the report against the export instead of scanning the live table",
+   "Convert the Scan to a Query, which does not consume read capacity"
+  ],
+  "answer": 2,
+  "why": "DynamoDB's <strong>export to S3</strong> reads from the table's continuous backups rather than consuming the table's provisioned or on-demand capacity, so a full-table analytical job can run against the export with zero impact on live traffic. DynamoDB has no concept of a read replica; a Query still consumes capacity and only helps if the access pattern fits a single partition, which a full-table report does not."
+ },
+ {
+  "q": "A provisioned-capacity table is set to 100 WCU. A write pattern averages 60 WCU but bursts to 300 WCU for one minute every hour, and the team wants to avoid both throttling during the burst and paying for 300 WCU around the clock. What should be configured?",
+  "options": [
+   "Switch to on-demand billing, which is always cheaper for any bursty pattern",
+   "Application auto scaling on the table's WCU, with a target utilization and min/max bounds, so capacity rises for the burst and falls back afterward",
+   "Provision a flat 300 WCU permanently to guarantee the burst is never throttled",
+   "Enable DynamoDB Accelerator (DAX) to absorb the write burst"
+  ],
+  "answer": 1,
+  "why": "<strong>Application auto scaling</strong> on provisioned capacity adjusts WCU/RCU within configured bounds based on a target utilization metric, which is exactly the tool for a predictable but bursty pattern under provisioned billing. It reacts on a short delay rather than instantly, unlike on-demand \u2014 but on-demand isn't automatically cheaper here since the average load is only 60 WCU most of the time. Provisioning a flat 300 WCU eliminates throttling risk but pays for unused capacity the rest of the hour. DAX accelerates reads, not writes."
+ }
+];
+
+const KEYS = ["A","B","C","D","E"];
+const stage = document.getElementById("stage");
+const fill = document.getElementById("fill");
+const tally = document.getElementById("tally");
+let i = 0, score = 0, missed = [];
+
+function progress(){
+  fill.style.width = (i / Q.length * 100) + "%";
+  tally.innerHTML = "<b>" + score + "</b>/" + Q.length + " correct";
+}
+
+// Options are shuffled on every run so the correct answer never settles into a
+// predictable position. `order[pos]` gives the original index shown at pos.
+function shuffle(item){
+  const order = item.options.map((_, n) => n);
+  for (let k = order.length - 1; k > 0; k--){
+    const j = Math.floor(Math.random() * (k + 1));
+    [order[k], order[j]] = [order[j], order[k]];
+  }
+  item.order = order;
+}
+
+function render(){
+  if (i >= Q.length) return finish();
+  const item = Q[i];
+  if (!item.order) shuffle(item);
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML =
+    '<div class="qnum">Question ' + (i+1) + ' of ' + Q.length + '</div>' +
+    '<p class="qtext">' + item.q + '</p><div class="opts"></div>';
+  const box = card.querySelector(".opts");
+  item.order.forEach((orig, pos) => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    b.id = "q" + i + "opt" + pos;
+    b.innerHTML = '<span class="key">' + KEYS[pos] + '</span><span>' + item.options[orig] + '</span>';
+    b.addEventListener("click", () => choose(card, box, pos));
+    box.appendChild(b);
+  });
+  stage.replaceChildren(card);
+  progress();
+}
+
+function choose(card, box, pickedPos){
+  const item = Q[i];
+  const correctPos = item.order.indexOf(item.answer);
+  const correct = pickedPos === correctPos;
+  if (correct) score++; else missed.push(i);
+
+  [...box.children].forEach((b, pos) => {
+    b.disabled = true;
+    if (pos === correctPos) b.classList.add("right");
+    else if (pos === pickedPos) b.classList.add("wrong");
+  });
+
+  const why = document.createElement("div");
+  why.className = "why " + (correct ? "ok" : "no");
+  why.innerHTML = '<span class="vl">' +
+    (correct ? "Correct — " + KEYS[correctPos] : "Not quite — the answer is " + KEYS[correctPos]) +
+    '</span>' + item.why;
+  card.appendChild(why);
+
+  const acts = document.createElement("div");
+  acts.className = "actions";
+  const next = document.createElement("button");
+  next.className = "btn";
+  next.textContent = i === Q.length - 1 ? "See results" : "Next question";
+  next.addEventListener("click", () => { i++; render(); });
+  acts.appendChild(next);
+  card.appendChild(acts);
+  next.focus();
+  progress();
+}
+
+function finish(){
+  fill.style.width = "100%";
+  const pct = Math.round(score / Q.length * 100);
+  const verdict = pct >= 85 ? "Comfortably above the ~72% needed to pass. This domain is solid."
+    : pct >= 72 ? "Around passing standard. Re-read the ones you missed — the margin is thin."
+    : pct >= 50 ? "The concepts are landing but the details are not yet reliable. Worth a second pass."
+    : "Worth rebuilding the lab and working through the console tour before drilling again.";
+
+  const card = document.createElement("div");
+  card.className = "card done";
+  let html = '<div class="score">' + pct + '<span>%</span></div>' +
+    '<p class="verdict"><strong>' + score + ' of ' + Q.length + ' correct.</strong> ' + verdict + '</p>';
+  if (missed.length){
+    html += '<div class="missed"><h3>Review these</h3><ul>' +
+      missed.map(n => '<li>Q' + (n+1) + ' — ' + Q[n].q.replace(/<[^>]+>/g, "").slice(0, 95) + '…</li>').join("") +
+      '</ul></div>';
+  }
+  html += '<div class="actions" style="justify-content:center"><button class="btn ghost" id="again">Run it again</button></div>';
+  card.innerHTML = html;
+  stage.replaceChildren(card);
+  document.getElementById("again").addEventListener("click", () => {
+    i = 0; score = 0; missed = [];
+    Q.forEach(q => delete q.order);   // reshuffle every option on a fresh run
+    render();
+  });
+  tally.innerHTML = "<b>" + score + "</b>/" + Q.length + " correct";
+}
+
+render();
+</script>

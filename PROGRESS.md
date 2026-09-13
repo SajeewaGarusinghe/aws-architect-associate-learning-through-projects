@@ -16,10 +16,12 @@ Account `213104855858` · region `ap-southeast-2` · one lab at a time, destroye
 | 08 | [DR patterns](labs/08-dr-patterns/) | Ready to deploy | — | — | D1 D2 |
 | 09 | [Caching](labs/09-caching/) | Ready to deploy | — | — | D1 D3 D4 |
 | 10 | [Cost & governance](labs/10-cost-governance/) | Ready to deploy — needs `params.json` | — | — | D1 D4 |
+| 11 | [DynamoDB deep dive](labs/11-dynamodb-deep-dive/) | **Deployed & destroyed** 2026-09-13 | ~20 min | $0.0000 | D1 D3 D4 |
 
 **Running total: $0.0368**
 
-Every lab is authored, validated and change-set previewed. Phase A is complete for all ten.
+Every lab is authored, validated and change-set previewed. Phase A is complete for all eleven;
+Labs 01 and 11 have also gone through Phase B (deployed, toured/demoed live, destroyed).
 
 ## What each lab costs while live
 
@@ -35,6 +37,7 @@ Every lab is authored, validated and change-set previewed. Phase A is complete f
 | 08 DR patterns | 0.0014 | <2 min | ~2 min | Zone + health check, $1/month |
 | 09 Caching | 0.028 | 6–9 min | **8–12 min** | ENIs must detach |
 | 10 Governance | ~0.000 | 2–3 min | 3–4 min | Config bills per item |
+| 11 DynamoDB deep dive | **0.000** | <1 min | <1 min | PITR bills per GB stored, not per hour |
 
 **Suggested auto-teardown windows:** 1800s for most, **2400s for lab 03**, **2100s for lab 09**.
 
@@ -64,6 +67,14 @@ Verified clean: **2026-09-12 09:09Z** — after Lab 01 teardown. Re-verified aft
 - **Cost Explorer is not enabled**, so every figure in this repo is estimated from published
   ap-southeast-2 rates rather than queried. Enabling it is free but takes 24 hours to populate.
 - **In-place instance resize is blocked** by the same plan restriction — migrate via AMI instead.
+- **`status` is a DynamoDB reserved keyword.** A key condition or update expression that uses it
+  directly fails validation — it needs an `ExpressionAttributeNames` alias. Hit live while
+  building Lab 11's GSI query, now fixed in `verify/checks.sh` and called out as a trap.
+- **IAM propagation after a role is newly created or replaced can take a couple of minutes**, not
+  the "few seconds" that editing an already-established role's policy usually takes. Observed
+  directly during Lab 11's failure injection, run immediately after a stack update had replaced
+  the role — both the deny and the later restore took noticeably longer to take effect than
+  editing a role that had existed for a while.
 
 ## Suggested order
 

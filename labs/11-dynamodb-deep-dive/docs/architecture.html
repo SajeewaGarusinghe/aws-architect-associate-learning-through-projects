@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab 11 — DynamoDB Deep Dive</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+<style>
+  html,body{margin:0;padding:0;}
+  body{background:#5a5f66;}
+  .sheet{width:8.5in;min-height:11in;margin:24px auto;padding:0.7in;background:#fff;
+    box-shadow:0 2px 18px rgba(0,0,0,.35);box-sizing:border-box;}
+  @page{size:letter;margin:0.7in;}
+  @media print{ body{background:#fff;} .sheet{width:auto;min-height:0;margin:0;padding:0;box-shadow:none;} }
+
+  :root{
+    --ink:#232F3E; --slate:#37475A; --orange:#FF9900; --orange-d:#EC7211;
+    --gray:#545B64; --gray-l:#879196; --wash:#FAFAFA; --line:#E3E7EB;
+    --blue:#2D72B8; --purple:#8B5CF6;
+  }
+  *{box-sizing:border-box}
+  body{color:var(--ink);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;}
+  .sheet{font-size:11pt;line-height:1.6;color:#1c2430;}
+  p{margin:0 0 10px;}
+  strong{font-weight:600;color:var(--ink);}
+  code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:9.2pt;background:#EEF1F4;border:1px solid #E0E5EA;border-radius:4px;padding:1px 5px;color:#2a3542;}
+
+  .cover{background:var(--ink);color:#fff;margin:-0.7in -0.7in 26px;padding:66px 0.7in 48px;position:relative;overflow:hidden;}
+  .cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:var(--orange);}
+  .cover::before{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,153,0,.16),transparent 68%);}
+  .cover .eyebrow{font-size:11pt;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);font-weight:600;margin-bottom:18px;}
+  .cover h1{font-size:33pt;line-height:1.08;margin:0 0 14px;font-weight:800;letter-spacing:-.015em;max-width:16em;text-wrap:balance;}
+  .cover .sub{font-size:12.5pt;color:#c7ced6;max-width:34em;line-height:1.55;}
+  .cover .meta{margin-top:28px;display:flex;gap:30px;flex-wrap:wrap;font-size:9.5pt;color:#9aa5b1;}
+  .cover .meta b{color:#fff;font-weight:700;display:block;font-size:16pt;margin-bottom:2px;font-variant-numeric:tabular-nums;}
+
+  h2.sec{font-size:9.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-d);font-weight:700;margin:0 0 4px;}
+  .p-h{font-size:16pt;font-weight:800;color:var(--ink);margin:0 0 6px;line-height:1.22;letter-spacing:-.01em;}
+  .p-h .num{color:var(--orange-d);}
+  .head-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;}
+
+  .sub-lbl{display:flex;align-items:center;gap:9px;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--orange-d);margin:16px 0 9px;}
+  .sub-lbl::after{content:"";flex:1;height:1.5px;background:linear-gradient(90deg,var(--orange) 0%,var(--line) 100%);}
+
+  .p{margin-bottom:26px;}
+  .lede{background:var(--wash);border:1px solid var(--line);border-left:4px solid var(--slate);border-radius:6px;padding:14px 18px;margin-bottom:6px;break-inside:avoid;}
+  .lede .tag{display:inline-block;font-size:8pt;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--slate);padding:2px 8px;border-radius:3px;margin-bottom:9px;}
+  .lede p{margin:0;font-size:10.5pt;color:#2a3542;}
+
+  .reqs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;break-inside:avoid;}
+  .reqs .col{border:1px solid var(--line);border-radius:6px;padding:10px 13px;background:#fff;}
+  .reqs .col h4{margin:0 0 6px;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:5px;}
+  .reqs ul{margin:0;padding-left:15px;font-size:9.5pt;color:#33404d;line-height:1.5;}
+  .reqs li{margin-bottom:4px;}
+  .reqs li::marker{color:var(--orange);}
+
+  .svc{margin:6px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .svc .r{display:flex;border-top:1px solid var(--line);font-size:9.7pt;}
+  .svc .r:first-child{border-top:none;}
+  .svc .name{flex:0 0 30%;padding:9px 13px;font-weight:700;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);display:flex;align-items:flex-start;gap:7px;}
+  .svc .name .dot{width:8px;height:8px;border-radius:2px;flex:none;margin-top:5px;}
+  .svc .role{flex:1;padding:9px 13px;color:#3a4552;}
+  .svc .role b{color:var(--ink);}
+
+  .callout{border-radius:6px;padding:11px 14px;margin:12px 0;font-size:9.8pt;line-height:1.5;break-inside:avoid;}
+  .callout .ct{font-weight:700;display:block;margin-bottom:2px;font-size:9pt;letter-spacing:.03em;}
+  .callout.key{background:#F0F6FC;border:1px solid #CFE2F3;color:#1c3a52;}
+  .callout.key .ct{color:#1f6feb;}
+  .callout.tip{background:#FFF4E0;border:1px solid #FBD79A;color:#5a3d0a;}
+  .callout.tip .ct{color:var(--orange-d);}
+  .callout.warn{background:#FDECEC;border:1px solid #F5C2C2;color:#6b1d1d;}
+  .callout.warn .ct{color:#C0392B;}
+
+  .flowsteps{margin:6px 0;}
+  .flowsteps .step{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line);break-inside:avoid;}
+  .flowsteps .step:first-child{border-top:none;}
+  .flowsteps .idx{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--orange);font-weight:800;font-size:9.5pt;display:flex;align-items:center;justify-content:center;}
+  .flowsteps .bd{flex:1;font-size:9.7pt;color:#3a4552;}
+  .flowsteps .bd b{color:var(--ink);}
+
+  .why{margin:12px 0;border:1px solid var(--line);border-radius:6px;overflow:hidden;break-inside:avoid;}
+  .why .cap-t{background:var(--ink);color:#fff;padding:6px 13px;font-size:8.4pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;}
+  .why .row{display:flex;border-top:1px solid var(--line);font-size:9.6pt;}
+  .why .opt{flex:0 0 34%;padding:8px 12px;font-weight:600;background:var(--wash);color:var(--ink);border-right:1px solid var(--line);}
+  .why .rea{flex:1;padding:8px 12px;color:#3a4552;}
+  .why .opt.no::before{content:"\2717  ";color:#C0392B;font-weight:800;}
+  .why .opt.yes{background:#EAF7F1;}
+  .why .opt.yes::before{content:"\2713  ";color:#1B9E77;font-weight:800;}
+
+  .spine{border:1px solid var(--line);border-radius:7px;margin:16px 0 4px;overflow:hidden;break-inside:avoid;background:#fff;box-shadow:0 1px 2px rgba(35,47,62,.05);}
+  .spine .hd{display:flex;align-items:center;gap:8px;background:var(--ink);color:#fff;padding:8px 15px;font-size:8.6pt;letter-spacing:.14em;text-transform:uppercase;font-weight:700;}
+  .spine .hd .clk{margin-left:auto;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--orange);text-transform:none;}
+  .spine .bd{padding:11px 15px 13px;}
+  .spine .tl{margin-bottom:11px;}
+  .spine .ph{display:flex;gap:12px;padding:6px 0;border-top:1px dashed var(--line);}
+  .spine .ph:first-child{border-top:none;padding-top:0;}
+  .spine .ph .mn{flex:0 0 64px;font-size:7.8pt;letter-spacing:.09em;text-transform:uppercase;font-weight:700;color:var(--orange-d);padding-top:2px;}
+  .spine .ph .tx{flex:1;font-size:9.6pt;color:#33404d;line-height:1.5;}
+  .spine .ph .tx b{color:var(--ink);font-weight:600;}
+  .spine .three{background:var(--wash);border:1px solid var(--line);border-radius:5px;padding:9px 13px;margin-bottom:9px;}
+  .spine .three .lb,.spine .flag .lb{font-size:7.6pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--slate);margin-bottom:5px;display:block;}
+  .spine .three ol{margin:0;padding-left:16px;font-size:9.4pt;color:#2a3542;line-height:1.5;}
+  .spine .three li{margin-bottom:2px;}
+  .spine .three li::marker{color:var(--orange-d);font-weight:700;}
+  .spine .flag{font-size:9.3pt;line-height:1.45;color:#6b1d1d;background:#FDECEC;border:1px solid #F5C2C2;border-radius:5px;padding:8px 12px;}
+  .spine .flag .lb{color:#C0392B;}
+  .spine .flag b{color:#8f2a20;font-weight:600;}
+
+  figure.dg{margin:16px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden;break-inside:avoid;background:#fff;}
+  figure.dg .cap{background:var(--wash);border-top:1px solid var(--line);padding:7px 14px;font-size:8.8pt;color:var(--gray);}
+  figure.dg .cap b{color:var(--orange-d);font-weight:700;}
+  figure.dg svg{display:block;width:100%;height:auto;}
+
+  .d-bg{fill:#fff;}
+  .vpc{fill:#F5F8FB;stroke:#2D72B8;stroke-width:1.5;stroke-dasharray:6 4;}
+  .region{fill:none;stroke:#545B64;stroke-width:1.4;stroke-dasharray:2 3;}
+  .az{fill:#FBFDFF;stroke:#879196;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-pub{fill:#EAF7F1;stroke:#1B9E77;stroke-width:1;stroke-dasharray:4 3;}
+  .sub-priv{fill:#EEF4FB;stroke:#2D72B8;stroke-width:1;stroke-dasharray:4 3;}
+  .asg{fill:none;stroke:#8B5CF6;stroke-width:1.5;stroke-dasharray:7 4;}
+  .tile{fill:#232F3E;}
+  .tile-o{fill:#FF9900;}
+  .tile-g{fill:#545B64;}
+  .tile-w{fill:#fff;stroke:#232F3E;stroke-width:1.3;}
+  .tile-b{fill:#2D72B8;}
+  .tile-p{fill:#8B5CF6;}
+  .tile-grn{fill:#1B9E77;}
+  .zbox{fill:#FAFBFC;stroke:#C7D0D8;stroke-width:1;stroke-dasharray:4 3;}
+  .tile-ghost{fill:#F4F6F8;stroke:#A9B4BF;stroke-width:1.2;stroke-dasharray:5 4;}
+  .t-lbl{font:600 11px 'Inter',sans-serif;fill:#fff;text-anchor:middle;}
+  .t-lbli{font:600 11px 'Inter',sans-serif;fill:#232F3E;text-anchor:middle;}
+  .t-lblg{font:600 10px 'Inter',sans-serif;fill:#6B7480;text-anchor:middle;}
+  .t-sub{font:500 8.5px 'Inter',sans-serif;fill:#fff;opacity:.8;text-anchor:middle;}
+  .t-subd{font:500 8.5px 'Inter',sans-serif;fill:#232F3E;opacity:.75;text-anchor:middle;}
+  .zone-lbl{font:700 9px 'Inter',sans-serif;letter-spacing:.07em;}
+  .flow{font:500 8.5px 'Inter',sans-serif;fill:#545B64;}
+  .ln{stroke:#545B64;stroke-width:1.6;fill:none;}
+  .ln-o{stroke:#FF9900;stroke-width:2;fill:none;}
+  .ln-async{stroke:#8B5CF6;stroke-width:1.6;fill:none;stroke-dasharray:6 4;}
+  .flow-a{font:500 8.5px 'Inter',sans-serif;fill:#8B5CF6;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px 26px;background:var(--wash);border:1px solid var(--line);border-radius:8px;padding:14px 18px;margin:8px 0;font-size:9.4pt;break-inside:avoid;}
+  .legend .grp{min-width:160px;}
+  .legend .grp .h{font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--gray);font-weight:700;margin-bottom:7px;}
+  .legend .it{display:flex;align-items:center;gap:9px;margin-bottom:6px;color:#33404d;}
+  .legend .chip{width:26px;height:15px;border-radius:3px;flex:none;}
+
+  .costs{width:100%;border-collapse:collapse;font-size:9.6pt;margin:8px 0;break-inside:avoid;}
+  .costs th{text-align:left;font-size:8.2pt;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700;border-bottom:1.5px solid var(--line);padding:6px 10px;}
+  .costs td{padding:7px 10px;border-bottom:1px solid var(--line);color:#3a4552;}
+  .costs td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;font-size:9pt;}
+  .costs tr.tot td{font-weight:700;color:var(--ink);border-bottom:none;border-top:1.5px solid var(--ink);}
+
+  @media (max-width:900px){
+    .sheet{width:auto;min-height:0;margin:0;padding:24px 16px;}
+    .cover{margin:-24px -16px 26px;padding:40px 16px 32px;}
+    .cover h1{font-size:26pt;}
+    .reqs{grid-template-columns:1fr;}
+    .svc .r,.why .row{flex-direction:column;}
+    .svc .name,.why .opt{flex:1;border-right:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#545B64"/></marker>
+  <marker id="arrow-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#FF9900"/></marker>
+  <marker id="arrow-a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8B5CF6"/></marker>
+</defs></svg>
+
+<div class="sheet">
+<div class="cover">
+    <div class="eyebrow">Architecture Overview</div>
+    <h1>Lab 11 — DynamoDB Deep Dive</h1>
+    <div class="sub">One table, two item shapes, a GSI and an LSI for two different access patterns, and a Streams-triggered function that turns a status change into an audit trail — with no VPC and no hourly charge.</div>
+    <div class="meta">
+      <div><b>5</b>resources</div>
+      <div><b>1</b>table, 2 indexes</div>
+      <div><b>0</b>servers</div>
+      <div><b>$0.00</b>per hour idle</div>
+    </div>
+  </div>
+
+  <p>Lab 04 put a DynamoDB table behind an API and moved on. This lab stays with the table: how a
+  single-table design carries two unrelated item types without them colliding, how a GSI and an LSI
+  answer two access patterns the primary key can't, what a condition expression actually buys you,
+  and how Streams turns "an item changed" into "something happened" without anyone polling.</p>
+
+  <div class="callout tip">
+    <span class="ct">Scope</span>
+    In scope: composite keys, sparse global and local secondary indexes, on-demand billing,
+    conditional writes, <code>TransactWriteItems</code>, TTL, point-in-time recovery, and DynamoDB
+    Streams as a Lambda event source. Out of scope: DAX, global tables, and provisioned capacity
+    with auto scaling — all three are covered in the exam notes, none of them are cheap enough to
+    justify deploying for a lab that tears itself down in minutes.
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Reference architecture</h2></div>
+    <div class="p-h"><span class="num">01.</span> One table, two access patterns, one event stream</div>
+
+    <div class="lede">
+      <span class="tag">In one line</span>
+      <p>Everything in this lab is one DynamoDB table doing three jobs at once — primary-key lookups,
+      index-backed queries, and a change feed — which is closer to how DynamoDB gets used in
+      production than a table-per-entity design ever is.</p>
+    </div>
+
+    <div class="sub-lbl">Context &amp; requirements</div>
+    <div class="reqs">
+      <div class="col">
+        <h4>What it must do</h4>
+        <ul>
+          <li>Store orders and products in one table</li>
+          <li>Answer "every order in status X" without a Scan</li>
+          <li>Answer "one customer's orders by size" without a Scan</li>
+          <li>Turn a status change into an audit record automatically</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>How it must behave</h4>
+        <ul>
+          <li>Stock can never go negative under concurrent writers</li>
+          <li>An order and its stock deduction move together, or not at all</li>
+          <li>Abandoned orders expire on their own, for free</li>
+          <li>The stream consumer holds exactly two permissions, on two different ARNs</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h4>Constraints</h4>
+        <ul>
+          <li>No VPC, no API layer — driven straight against the AWS APIs</li>
+          <li>On-demand billing throughout</li>
+          <li>The LSI must exist at table-creation time — no retrofitting it</li>
+          <li>Idle cost must round to zero</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-lbl">High-level design</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>DynamoDB table</div>
+        <div class="role">Composite key <code>pk</code> + <code>sk</code>, on-demand billing, holding orders, products and audit records in one table. <b>Why:</b> one table means one thing to back up, one stream to consume, and no cross-table transaction needed for data that's naturally related.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#8B5CF6"></span>gsi1-status-by-time</div>
+        <div class="role">Global secondary index, partition key <code>status</code>, sort key <code>createdAt</code>. <b>Why:</b> "every PENDING order" cuts across every customer's partition — only a GSI with its own partition key can answer that without a Scan. Sparse by construction: products never carry a <code>status</code>, so they never appear here.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>lsi1-by-total</div>
+        <div class="role">Local secondary index, same partition key as the base table (<code>pk</code>), sort key <code>total</code>. <b>Why:</b> "this customer's orders, biggest first" needs the same partition as the base table but a different order — the one job an LSI does that a GSI can't do more cheaply.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#232F3E"></span>Stream processor (Lambda)</div>
+        <div class="role">Python 3.12, triggered by an event source mapping on the table's stream. <b>Why:</b> reacts to <code>NEW_AND_OLD_IMAGES</code> to detect a status transition and write an audit item back — the only way to get "notify something when a record changes" without the writer knowing anyone is listening.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Stream role</div>
+        <div class="role">Two statements: stream-read actions scoped to <code>&lt;table-arn&gt;/stream/*</code>, and <code>PutItem</code> scoped to the table ARN itself. <b>Why:</b> these are genuinely different permissions on different resources — removing one silences the function, removing the other makes it fail loudly. The failure injection is built around that split.</div></div>
+    </div>
+
+    <figure class="dg">
+      <svg viewBox="0 0 760 440" role="img" aria-label="A CLI or SDK writes to a DynamoDB table with a global secondary index and a local secondary index. The table's stream triggers a Lambda function, which writes an audit item back to the table and logs to CloudWatch.">
+        <rect class="d-bg" x="0" y="0" width="760" height="440"/>
+
+        <rect class="tile-w" x="30" y="205" width="130" height="52" rx="5"/>
+        <text class="t-lbli" x="95" y="227">CLI / SDK</text>
+        <text class="flow" x="95" y="242" text-anchor="middle">any AWS caller</text>
+
+        <rect class="region" x="186" y="16" width="566" height="404" rx="8"/>
+        <text class="zone-lbl" x="198" y="36" fill="#545B64">REGION · ap-southeast-2 · NO VPC, NO API GATEWAY, NO INSTANCES</text>
+
+        <rect class="tile-w" x="550" y="56" width="182" height="44" rx="4"/>
+        <text class="t-lbli" x="641" y="74">gsi1-status-by-time</text>
+        <text class="t-subd" x="641" y="90">status + createdAt · sparse</text>
+
+        <rect class="tile-w" x="550" y="112" width="182" height="44" rx="4"/>
+        <text class="t-lbli" x="641" y="130">lsi1-by-total</text>
+        <text class="t-subd" x="641" y="146">pk + total · sparse</text>
+
+        <rect class="tile-b" x="300" y="190" width="190" height="64" rx="4"/>
+        <text class="t-lbl" x="395" y="214">DynamoDB</text>
+        <text class="t-sub" x="395" y="230">saa-lab-11-orders</text>
+        <text class="t-sub" x="395" y="244">pk + sk · on-demand · TTL · PITR</text>
+
+        <path class="ln" d="M490,205 L546,74" marker-end="url(#arrow)"/>
+        <path class="ln" d="M490,235 L546,130" marker-end="url(#arrow)"/>
+
+        <rect class="tile" x="300" y="300" width="190" height="60" rx="4"/>
+        <text class="t-lbl" x="395" y="324">Stream processor</text>
+        <text class="t-sub" x="395" y="340">python3.12 · Lambda</text>
+
+        <rect class="tile-w" x="300" y="390" width="190" height="40" rx="5"/>
+        <text class="t-lbli" x="395" y="414">CloudWatch Logs</text>
+
+        <path class="ln-o" d="M160,231 H296" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="212" y="185">PutItem · UpdateItem · Query</text>
+        <text class="flow" x="212" y="197">TransactWriteItems</text>
+
+        <path class="ln-async" d="M460,254 V298" marker-end="url(#arrow-a)"/>
+        <text class="flow-a" x="468" y="268">Streams</text>
+        <text class="flow-a" x="468" y="280">NEW_AND_OLD_IMAGES</text>
+
+        <path class="ln-o" d="M330,298 V254" marker-end="url(#arrow-o)"/>
+        <text class="flow" x="216" y="268">PutItem:</text>
+        <text class="flow" x="216" y="280">AUDIT item</text>
+
+        <path class="ln-async" d="M395,360 V386" marker-end="url(#arrow-a)"/>
+        <text class="flow-a" x="405" y="378">stdout · async</text>
+
+        <text class="flow" x="212" y="360">Two IAM statements on two ARNs:</text>
+        <text class="flow" x="212" y="372">stream reads vs. the table write-back —</text>
+        <text class="flow" x="212" y="384">removing one fails silently, the other loudly.</text>
+
+        <text class="flow" x="212" y="404">Idle cost: $0.00/hour. PITR bills per GB stored, not per hour.</text>
+      </svg>
+      <figcaption class="cap"><b>Fig 01</b> — One table, two sparse indexes, and a stream that turns its own writes into a second kind of write. Nothing here is reached over a network route; every arrow is either a direct API call or an event source mapping.</figcaption>
+    </figure>
+
+    <div class="legend">
+      <div class="grp">
+        <div class="h">Tile colour = tier</div>
+        <div class="it"><span class="chip" style="background:#2D72B8"></span>Base table</div>
+        <div class="it"><span class="chip" style="background:#232F3E"></span>Compute</div>
+      </div>
+      <div class="grp">
+        <div class="h">&nbsp;</div>
+        <div class="it"><span class="chip" style="background:#fff;border:1.3px solid #232F3E"></span>Index / managed service / caller</div>
+      </div>
+      <div class="grp">
+        <div class="h">Line style = relationship</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#FF9900" stroke-width="2"/></svg>Direct API call</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#545B64" stroke-width="1.6"/></svg>Index projection</div>
+        <div class="it"><svg width="26" height="10" aria-hidden="true"><line x1="0" y1="5" x2="26" y2="5" stroke="#8B5CF6" stroke-width="1.6" stroke-dasharray="6 4"/></svg>Event source mapping</div>
+      </div>
+    </div>
+
+    <div class="sub-lbl">Data flow</div>
+    <div class="flowsteps">
+      <div class="step"><div class="idx">1</div><div class="bd">A caller writes a product with <code>stock</code> and <code>version</code> attributes and no <code>status</code> or <code>total</code> — those only exist on order items, which is why this item will never appear in either index.</div></div>
+      <div class="step"><div class="idx">2</div><div class="bd">A stock decrement carries <code>ConditionExpression: stock &gt; :zero</code>. DynamoDB evaluates the condition and applies the write as one atomic operation; if the condition is false, the item is left exactly as it was and the call returns <code>ConditionalCheckFailedException</code>.</div></div>
+      <div class="step"><div class="idx">3</div><div class="bd"><code>TransactWriteItems</code> decrements stock and creates the order in a single all-or-nothing call — there is no window in which the order exists without the matching stock deduction, unlike two separate calls or <code>BatchWriteItem</code>.</div></div>
+      <div class="step"><div class="idx">4</div><div class="bd">The order item carries <code>status</code> and <code>createdAt</code>, so it's automatically projected into <b>gsi1-status-by-time</b>, and it carries <code>total</code> under the same <code>pk</code> as the base table, so it's projected into <b>lsi1-by-total</b> too — no second write, no second table.</div></div>
+      <div class="step"><div class="idx">5</div><div class="bd">A later <code>UpdateItem</code> flips the order's <code>status</code>. The table's stream, set to <code>NEW_AND_OLD_IMAGES</code>, carries both the before and after value of every attribute to the event source mapping.</div></div>
+      <div class="step"><div class="idx">6</div><div class="bd">The stream processor compares old and new <code>status</code>. When they differ, it writes one audit item back to the same table with <code>pk = AUDIT</code> — a single partition a later <code>Query</code> can read in order, exactly like Lab 04's notes pattern.</div></div>
+      <div class="step"><div class="idx">7</div><div class="bd">If <code>expiresAt</code> passes, the background TTL sweep deletes the item for free and the deletion itself appears on the stream as a <code>REMOVE</code> event carrying a system principal — the processor tells this apart from a manual delete and logs it accordingly.</div></div>
+      <div class="step"><div class="idx">8</div><div class="bd">Everything the function prints lands in CloudWatch Logs asynchronously. During the failure injection, this is where an <code>AccessDeniedException</code> for the write-back <code>PutItem</code> appears — while the stream read that triggered the invocation keeps succeeding.</div></div>
+    </div>
+
+    <div class="sub-lbl">Key decisions</div>
+
+    <div class="why">
+      <div class="cap-t">How should "every order in this status" be answered?</div>
+      <div class="row"><div class="opt no"><code>Scan</code> with a filter expression</div><div class="rea">Reads <b>every item in the table</b> — orders, products, and every audit record — then discards whatever doesn't match. Cost and latency grow with total table size forever, regardless of how few PENDING orders actually exist.</div></div>
+      <div class="row"><div class="opt yes">Query <code>gsi1-status-by-time</code></div><div class="rea">Chosen. A GSI can have a partition key the base table doesn't have at all. Because the index is sparse — only items with a <code>status</code> attribute appear in it — the index stays small even as the audit trail grows unbounded in the base table.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">How should "this customer's orders, biggest first" be answered?</div>
+      <div class="row"><div class="opt no">Add a second GSI keyed on <code>pk</code> + <code>total</code></div><div class="rea">Works, but costs its own write capacity and storage for an index whose partition key is identical to the base table's — paying for a feature (a different partition key) this access pattern never needed.</div></div>
+      <div class="row"><div class="opt yes">Query <code>lsi1-by-total</code></div><div class="rea">Chosen. An LSI shares the base table's partition key by definition, which is exactly this access pattern's shape. The trade is that it must be declared at table creation — there is no adding one to a live table, capped at five per table either way.</div></div>
+    </div>
+
+    <div class="why">
+      <div class="cap-t">How should the order write and the stock deduction move together?</div>
+      <div class="row"><div class="opt no"><code>BatchWriteItem</code></div><div class="rea">Despite the name, each item in the batch is written independently — a partial failure can leave the order created with no matching stock deduction, or vice versa. It's a batching optimisation, not a consistency guarantee.</div></div>
+      <div class="row"><div class="opt yes"><code>TransactWriteItems</code></div><div class="rea">Chosen. Every action in the transaction succeeds together or none of them apply, at roughly double the write-capacity cost of doing the same writes individually — the price of the atomicity guarantee.</div></div>
+    </div>
+
+    <div class="callout key">
+      <span class="ct">The detail that decides GSI vs. LSI on the exam</span>
+      A global secondary index can be added, changed or removed on a table that's already live, and
+      its partition key can be anything. A local secondary index <strong>must be declared when the
+      table is created</strong>, is capped at five, and its partition key is always the base table's.
+      When a question says "the table already exists in production and needs a new access pattern,"
+      the answer is a GSI — an LSI is no longer on the table.
+    </div>
+
+    <div class="sub-lbl">Security · scaling · reliability · cost</div>
+    <div class="svc">
+      <div class="r"><div class="name"><span class="dot" style="background:#1B9E77"></span>Data protection</div>
+        <div class="role">The stream processor holds two narrow statements rather than <code>dynamodb:*</code>: stream-read actions on the stream ARN, <code>PutItem</code> on the table ARN. Point-in-time recovery is enabled from the template, giving continuous restore to any second in the last 35 days without a scheduled backup job.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#2D72B8"></span>Scaling</div>
+        <div class="role">On-demand billing means no capacity to plan for on the table or either index. The real scaling risk here is a <b>hot partition</b> — one heavily written partition key throttles independently of the table's overall headroom, which no amount of raised capacity fixes on its own; the fix is key design.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#C0392B"></span>Failure modes</div>
+        <div class="role">A denied stream-read permission stops invocations entirely with no error anywhere — the function simply never runs. A denied write-back permission lets the function run and fail loudly with a logged <code>AccessDeniedException</code>. <b>Blast radius is one function</b>; the table itself is untouched either way.</div></div>
+      <div class="r"><div class="name"><span class="dot" style="background:#FF9900"></span>Cost levers</div>
+        <div class="role">Idle is free. Under load, the levers are avoiding Scan, choosing conditional writes over read-then-write round trips, and reserving <code>TransactWriteItems</code> for writes that genuinely need atomicity — its roughly 2× capacity cost is wasted on writes that don't.</div></div>
+    </div>
+
+    <div class="spine">
+      <div class="hd">Operational notes<span class="clk">~20 min live</span></div>
+      <div class="bd">
+        <div class="tl">
+          <div class="ph"><div class="mn">Deploy</div><div class="tx"><b>Under a minute.</b> A table with two indexes, a role, a log group and a function — nothing here has RDS's multi-minute provisioning or a NAT gateway's dependency chain.</div></div>
+          <div class="ph"><div class="mn">Observe</div><div class="tx">Force a <code>ConditionalCheckFailedException</code> on purpose, then run a <code>TransactWriteItems</code> call and confirm both writes landed together. Watch the audit item appear in CloudWatch Logs within seconds of a status change, with no polling anywhere.</div></div>
+          <div class="ph"><div class="mn">Break</div><div class="tx">Remove <code>dynamodb:PutItem</code> from the stream role. Reads off the stream keep happening — the function keeps getting invoked — but the write-back fails loudly. Removing a stream-read action instead would have failed <em>silently</em>: same role, opposite symptom.</div></div>
+          <div class="ph"><div class="mn">Destroy</div><div class="tx">Under a minute. Point-in-time recovery stops billing the moment the table is gone — there is no separate backup vault left holding a charge.</div></div>
+        </div>
+        <div class="three">
+          <span class="lb">Watch these three things</span>
+          <ol>
+            <li>Which items show up in <code>gsi1-status-by-time</code> versus <code>lsi1-by-total</code> — neither index contains every item in the table, and that's by design, not a bug.</li>
+            <li>The exact wording of <code>ConditionalCheckFailedException</code> — it's the normal, expected outcome of a condition expression doing its job, not a system error.</li>
+            <li>How a TTL-driven <code>REMOVE</code> looks identical to a manual delete on the outside, distinguishable only by the principal recorded in the stream record.</li>
+          </ol>
+        </div>
+        <div class="flag">
+          <span class="lb">Red flag — don't</span>
+          Never reach for <code>BatchWriteItem</code> when two writes must succeed or fail together —
+          it looks like a transaction and isn't one. The same trap catches an LSI added "later" to
+          save a design decision for after launch: by the time the access pattern is needed, the
+          table already exists, and an LSI can no longer be added to it at all.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="p">
+    <div class="head-row"><h2 class="sec">Closing</h2></div>
+    <div class="p-h"><span class="num">02.</span> What this costs and what it leaves out</div>
+
+    <table class="costs">
+      <thead><tr><th>Component</th><th style="text-align:right">Idle $ / hour</th><th style="text-align:right">Per demo run</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>DynamoDB on-demand (table + GSI + LSI)</td><td class="n">0.0000</td><td class="n">0.0001</td><td>A dozen reads and writes</td></tr>
+        <tr><td>DynamoDB Streams reads</td><td class="n">0.0000</td><td class="n">0.0000</td><td>A handful of GetRecords calls</td></tr>
+        <tr><td>Point-in-time recovery</td><td class="n">~0.0000</td><td class="n">~0.0000</td><td>Billed per GB stored, not per hour</td></tr>
+        <tr><td>Lambda (stream processor)</td><td class="n">0.0000</td><td class="n">0.0000</td><td>Within the always-free tier</td></tr>
+        <tr class="tot"><td>Total</td><td class="n">0.0000</td><td class="n">0.0001</td><td>A fraction of a cent for the whole lab</td></tr>
+      </tbody>
+    </table>
+
+    <p>For comparison, adding <strong>DAX</strong> in front of this table for microsecond reads would
+    introduce the first genuinely hourly charge in the lab — a minimum three-node cluster running
+    continuously, which is exactly why it isn't deployed here even though it's real exam content.
+    <strong>Global tables</strong> would add per-region replicated write costs for the same reason.</p>
+
+    <p><strong>Deliberately absent.</strong> DAX (in-memory caching in front of the table — covered in
+    the exam notes, not deployed). Global tables (multi-region active-active replication — same).
+    Provisioned capacity with auto scaling — on-demand suits a lab with no steady traffic to forecast
+    against. An API layer of any kind: this lab is about what the database does, not what fronts it.</p>
+
+    <div class="callout warn">
+      <span class="ct">The exam's framing</span>
+      DynamoDB questions almost always hinge on one access pattern described in prose. Translate it
+      first: does it need the base table's key, a different partition key entirely (GSI), the same
+      partition with a different sort (LSI), atomicity across items (<code>TransactWriteItems</code>),
+      or a reaction to change (Streams)? Naming the right primitive is the whole question — the API
+      call names follow automatically once the primitive is right.
+    </div>
+  </div>
+</div>
+</body>
+</html>

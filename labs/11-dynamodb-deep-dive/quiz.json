@@ -1,0 +1,142 @@
+{
+  "eyebrow": "SAA-C03 · Lab 11",
+  "title": "DynamoDB Deep Dive Exam Drill",
+  "intro": "Twelve scenario questions on keys, indexes, capacity, consistency and Streams. Answer cold — the explanation appears after each choice.",
+  "footer": "Drawn from Lab 11 — DynamoDB deep dive. Reference notes: exam-notes.md",
+  "notes_title": "Lab 11 (DynamoDB Deep Dive)",
+  "notes_intro": "Twelve SAA-C03-style questions on partition design, indexes, capacity modes, consistency, transactions and Streams, then the traps and reference tables. Answers are at the bottom — try them cold first.",
+  "questions": [
+    {
+      "q": "A table uses customerId as the partition key. One customer places far more orders than any other, and that customer's requests start getting throttled while the table's overall consumed capacity is well under its provisioned limit. What is happening?",
+      "options": [
+        "The table needs a global secondary index",
+        "A hot partition — traffic to one partition key exceeds that partition's share of throughput, regardless of the table-wide total",
+        "DynamoDB requires manual partition rebalancing that has not been triggered yet",
+        "The item size for that customer's items exceeds 400 KB"
+      ],
+      "answer": 1,
+      "why": "Throughput is spread across partitions, not just across the table. A single very active partition key can be throttled even when the table overall has capacity to spare — this is a <strong>hot partition</strong>. Adaptive capacity and on-demand mode both help absorb it, but the durable fix is a partition key with higher cardinality, such as adding a random or time-based suffix to spread the load."
+    },
+    {
+      "q": "A table's access pattern is entirely unpredictable — sometimes zero requests for hours, sometimes a burst of thousands per second with no warning. Which billing mode fits best, and why?",
+      "options": [
+        "Provisioned capacity with auto scaling, because it reacts to the burst",
+        "On-demand, because it charges per request with no capacity to plan for and scales instantly to bursts",
+        "Provisioned capacity with reserved capacity purchased in advance",
+        "On-demand cannot handle sudden bursts, so provisioned is required"
+      ],
+      "answer": 1,
+      "why": "<strong>On-demand</strong> bills per request and scales immediately, which is exactly suited to unpredictable, spiky traffic. Provisioned capacity with auto scaling reacts on a delay — it adjusts based on consumption metrics, so a sudden burst can be throttled before scaling catches up. Provisioned capacity is the better economic choice only once traffic is steady enough to forecast."
+    },
+    {
+      "q": "A table has partition key orderId. A new requirement needs 'every order placed by a given customer, newest first' — a query that doesn't exist today. What is the standard fix?",
+      "options": [
+        "Change the base table's partition key to customerId",
+        "Add a global secondary index with customerId as its partition key and a timestamp as its sort key",
+        "Scan the table and filter by customerId in application code",
+        "Add a local secondary index with customerId as its partition key"
+      ],
+      "answer": 1,
+      "why": "A <strong>GSI</strong> can have an entirely different partition key from the base table, which is exactly what's needed here. An <strong>LSI is not an option</strong> — it must share the base table's partition key. Changing the base table's key schema isn't possible after creation, and Scan-and-filter reads (and bills for) the whole table."
+    },
+    {
+      "q": "Which statement correctly distinguishes a local secondary index from a global secondary index?",
+      "options": [
+        "An LSI must be created when the table is created and shares the base table's partition key; a GSI can be added or removed at any time with its own partition key",
+        "A GSI must be created when the table is created; an LSI can be added later",
+        "An LSI supports strongly consistent reads and a GSI does not — otherwise they are interchangeable",
+        "A GSI is limited to five per table; an LSI has no such limit"
+      ],
+      "answer": 0,
+      "why": "The creation-time constraint is the detail the exam leans on hardest: an <strong>LSI</strong> can only be declared when the table is created, is limited to five per table, and always shares the base table's partition key with a different sort key. A <strong>GSI</strong> can be added or removed on a live table, has its own partition and sort key, and supports up to twenty per table by default. The consistency point is real but reversed as a distinguishing feature — LSIs optionally support strongly consistent reads; GSIs are eventually consistent only."
+    },
+    {
+      "q": "An UpdateItem call includes ConditionExpression 'stock > :zero'. Concurrent requests hit the same item when stock is already 0. What happens?",
+      "options": [
+        "All requests succeed and stock goes negative",
+        "The requests are queued and retried automatically by DynamoDB until stock becomes positive",
+        "Every request whose condition fails returns ConditionalCheckFailedException immediately, and the item is left unchanged",
+        "The first request succeeds and all others are silently dropped"
+      ],
+      "answer": 2,
+      "why": "A condition expression makes the check and the write one atomic operation. Any call where the condition evaluates false gets <strong>ConditionalCheckFailedException</strong> back immediately and makes no change — there is no queueing or retry built in. This is the standard way to prevent overselling or lost updates without a separate locking service."
+    },
+    {
+      "q": "An application needs to create an order and decrement matching stock, and must never end up with one write applied and not the other. Which DynamoDB feature fits?",
+      "options": [
+        "Two separate PutItem/UpdateItem calls wrapped in a try/except block",
+        "BatchWriteItem, which applies all items in the batch as a single unit",
+        "TransactWriteItems, which applies up to 100 actions across one or more tables as a single all-or-nothing operation",
+        "DynamoDB Streams, replaying the order write from the change log"
+      ],
+      "answer": 2,
+      "why": "<strong>TransactWriteItems</strong> is the only one of these that is genuinely atomic across multiple items — all actions succeed together or none do. <strong>BatchWriteItem is a common trap</strong>: despite the name, it makes independent per-item writes and a partial failure can leave some items written and others not. It roughly doubles the consumed write capacity compared to the same writes done individually, which is the cost of the atomicity guarantee."
+    },
+    {
+      "q": "A DynamoDB table has Streams enabled with view type NEW_AND_OLD_IMAGES, feeding a Lambda function via an event source mapping. An item is deleted because its TTL attribute expired. What does the Lambda function see?",
+      "options": [
+        "Nothing — TTL deletions do not appear on the stream",
+        "A REMOVE event carrying the item's last image, distinguishable from a manual delete by a system principal in the record",
+        "An INSERT event, because TTL creates a tombstone record",
+        "The function is not invoked because TTL deletions are asynchronous"
+      ],
+      "answer": 1,
+      "why": "TTL deletions are <strong>free of write-capacity charge</strong> but still appear on the stream as an ordinary <strong>REMOVE</strong> event, carrying the old image. The record identifies the deletion as coming from the DynamoDB service rather than a user or role, which is how a consumer tells a TTL expiry apart from an application-issued delete."
+    },
+    {
+      "q": "A query against a table's base table returns stale results immediately after a write completes on a different node handling that request. What read type was used, and how would this be avoided?",
+      "options": [
+        "Strongly consistent read used by default; disable it to avoid staleness",
+        "Eventually consistent read, the default; request ConsistentRead=true for a strongly consistent read, at roughly double the read capacity cost",
+        "Eventually consistent reads cannot be made consistent without switching to a global table",
+        "The behavior is a bug; DynamoDB reads are always immediately consistent by default"
+      ],
+      "answer": 1,
+      "why": "DynamoDB defaults to <strong>eventually consistent reads</strong>, which cost half the read capacity of a strongly consistent read and may briefly reflect stale data after a very recent write. Passing <strong>ConsistentRead=true</strong> (GetItem, Query, Scan) requests a strongly consistent read from the leader, at double the RCU cost — and it is not available at all against a global secondary index."
+    },
+    {
+      "q": "A read-heavy DynamoDB table backs a product catalog with the same handful of items read far more often than everything else. Latency needs to drop from single-digit milliseconds to microseconds. What should be added?",
+      "options": [
+        "A global secondary index on the most-read attribute",
+        "DAX (DynamoDB Accelerator) as an in-memory cache in front of the table, requiring no application logic changes for cached reads",
+        "Switch the table to provisioned capacity with a higher RCU value",
+        "Enable DynamoDB Streams and cache reads in the Lambda function"
+      ],
+      "answer": 1,
+      "why": "<strong>DAX</strong> is a managed, write-through, in-memory cache purpose-built for DynamoDB, cutting read latency from milliseconds to microseconds for cached items with minimal code change (the DAX client is API-compatible with the DynamoDB SDK). A GSI changes what you can query, not how fast a repeated read returns; more RCUs raise throughput ceilings, not latency for hot items."
+    },
+    {
+      "q": "An application must remain available for both reads and writes even if an entire AWS Region becomes unavailable, with automatic multi-active replication and no manual failover step. What DynamoDB feature provides this?",
+      "options": [
+        "Point-in-time recovery restored into a second region after an outage",
+        "On-demand backups copied cross-region on a schedule",
+        "Global tables — multi-region, multi-active replication with typically sub-second propagation and no application-triggered failover",
+        "A read replica in a second region, promoted manually during an outage"
+      ],
+      "answer": 2,
+      "why": "<strong>Global tables</strong> replicate a table across chosen regions with active-active reads and writes in every region — there is no primary to fail over, and no manual promotion step. PITR and on-demand backups protect against data loss and corruption, not regional unavailability, and DynamoDB has no concept of a manually promoted read replica the way RDS does."
+    },
+    {
+      "q": "A nightly batch job scans an entire 50 GB table to build a report, and the team wants to eliminate the throughput impact of that scan on the table's normal traffic without changing the report's logic. What is the most direct fix?",
+      "options": [
+        "Increase provisioned RCUs permanently to absorb the scan",
+        "Run the same Scan against a read replica of the table",
+        "Export the table to Amazon S3 (DynamoDB's built-in export feature) and run the report against the export instead of scanning the live table",
+        "Convert the Scan to a Query, which does not consume read capacity"
+      ],
+      "answer": 2,
+      "why": "DynamoDB's <strong>export to S3</strong> reads from the table's continuous backups rather than consuming the table's provisioned or on-demand capacity, so a full-table analytical job can run against the export with zero impact on live traffic. DynamoDB has no concept of a read replica; a Query still consumes capacity and only helps if the access pattern fits a single partition, which a full-table report does not."
+    },
+    {
+      "q": "A provisioned-capacity table is set to 100 WCU. A write pattern averages 60 WCU but bursts to 300 WCU for one minute every hour, and the team wants to avoid both throttling during the burst and paying for 300 WCU around the clock. What should be configured?",
+      "options": [
+        "Switch to on-demand billing, which is always cheaper for any bursty pattern",
+        "Application auto scaling on the table's WCU, with a target utilization and min/max bounds, so capacity rises for the burst and falls back afterward",
+        "Provision a flat 300 WCU permanently to guarantee the burst is never throttled",
+        "Enable DynamoDB Accelerator (DAX) to absorb the write burst"
+      ],
+      "answer": 1,
+      "why": "<strong>Application auto scaling</strong> on provisioned capacity adjusts WCU/RCU within configured bounds based on a target utilization metric, which is exactly the tool for a predictable but bursty pattern under provisioned billing. It reacts on a short delay rather than instantly, unlike on-demand — but on-demand isn't automatically cheaper here since the average load is only 60 WCU most of the time. Provisioning a flat 300 WCU eliminates throttling risk but pays for unused capacity the rest of the hour. DAX accelerates reads, not writes."
+    }
+  ]
+}
